@@ -1,45 +1,24 @@
-"""
-This is the Interferometry module
-"""
+"""Module containing interferometry classes and methods in the impulse approximation and without the approximation"""
 
 #!/usr/bin/env python3
 from textwrap import dedent
 import os
 import sys
-sys.path.append("/home/martin/Work/GitHub/MolRot/Utility/")
+sys.path.append("/home/martin/Work/quantumLibWorkP3")
 import numpy as np
 import math
 import cmath
 from qutip import *
 import parameters as pm
-from Utility import *
 
 class Interferometry():
     """
     The main interferometry class
-
-    Attributes:
-    -----------
-
-    istate: Qobj
-        Initial state to perform the interfermoetry on
-
-    mstate: int
-        Which final state to record the interferogram on
-
-    B: float
-        The rotational constant
-
-    dim: int
-        The dimension of the rotational basis to use
-
-    Name: str
-        Optional name of the iinterferometer
     """
 
     def __init__(self, istate, mstate=0, B=1., dim=3, Name=None) -> None:
         """
-        The interferometer constructor
+        Initializes an instance of the interferometer
             
             Args:
                 istate: Qobj (ket or density matrix)
@@ -117,18 +96,7 @@ class Interferometry():
             print("Tried to plot the Fourier spectrum. Can't do that if either the spectrum or omega grid don' t exist.")
             raise Exception()
 
-    def plot_spectrum(self, title=None, scaleTrot=False) -> None:
-        """
-        Plots the spectrum
-        
-        Args:
-
-        title: str
-            Optional title of the spectrum plot
-
-        scaleTrot: Boolean
-            True if $\omega$ should be scaled with respect to the rotational constant. Default: False
-        """
+    def plot_spectrum(self, title=None, scaleTrot=False, setTicks=False) -> None:
         import matplotlib.pyplot as plt
         if (self.omega is not None) and (self.spectrum is not None):
             # Prepare plot
@@ -139,11 +107,14 @@ class Interferometry():
                 plt.plot(self.omega, self.spectrum)
 
 
-            # Set axis labels
+            # Set axis labels 
             if scaleTrot:
                 plt.xlabel('$\omega$ ($T_{rot}^{-1}$)' )
+                if setTicks:
+                    plt.xticks(np.arange(self.omega[0]*Trot, self.omega[-1]*Trot, step=2))
             else:
                 plt.xlabel('$\omega$ (au)')
+
                     
             plt.ylabel('Spectrum')
 
@@ -153,6 +124,7 @@ class Interferometry():
 
             # Plot the graph
             plt.plot()
+            plt.show()
         else:
             print("Tried to plot the Fourier spectrum. Can't do that if either the spectrum or omega grid don' t exist.")
             raise Exception()
@@ -200,14 +172,19 @@ class ImpactInterferometry(Interferometry):
         """
         Runs an interferometry run and records final time delay dependent populatins
         """
+        from qutip import ket2dm, basis
+        from Utility import Proj
         lt = len(self.tau)
         inter = np.zeros(lt)
+        Op = ket2dm(basis(self.dim, self.mstate))
         for i in range(lt):
             self.set_pulses(self.Ps, [0., self.tau[i]])
             self.set_EvolutionOperator()
             fstate = self.U * self.istate
-            fspop  = fstate.extract_states(self.mstate)
-            inter[i] = abs(fspop.overlap(fspop))**2. 
+            dm = ket2dm(fstate)
+            inter[i] = Proj(Op,dm)
+            #fspop  = fstate.extract_states(self.mstate)
+            #inter[i] = abs(fspop.overlap(fspop))**2. 
             
         
         self.inter = inter
