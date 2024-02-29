@@ -30,17 +30,6 @@ class Optimizer():
             
             SP_t1: string
                 Single pulse optimizataion with time delay (targets: S1, S2)
-            
-            DP_t1: string
-                Doupble pulse optimiztion with fixed t2 delay and variable t1 delay (targets: S1, S2)
-
-            DP_t2: string
-                Doupble pulse optimiztion with variable t1 delay (targets: S3)
-
-            DP_t1_t2:
-                Doupble pulse optimiztion with variable t1, t2 delays (targets: S1, S2)
-
-                
     """
     
     Target_list = ['S1', 'S2', 'S3']
@@ -102,7 +91,8 @@ class Optimizer():
                 Lagrange function to minimize
         """
         import Utility as Ut
-        from Utility import UBWO, Proj, PauliN
+        from Utility import UBWO, Proj
+        from Tomomod import PauliN
         Up.update_pulse_operator(x)
         Op_BW = UBWO(Up.Up, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
@@ -143,7 +133,8 @@ class Optimizer():
                 Lagrange function to minimize
         """
         import Utility as Ut
-        from Utility import UBWO, Proj, PauliN
+        from Utility import UBWO, Proj
+        from Tomomod import PauliN
         U.update_full_operator(which="t", value=x[0])
         Op_BW = UBWO(U.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
@@ -185,7 +176,8 @@ class Optimizer():
 
         """
         import Utility as Ut
-        from Utility import UBWO, Proj, PauliN
+        from Utility import UBWO, Proj
+        from Tomomod import PauliN
         U.update_full_operator(which="t", value=x[0])
         Op_BW = UBWO(U.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
@@ -267,7 +259,8 @@ class Optimizer():
     @staticmethod
     def min_DP_t1_S2(x, Ufull, Op, dim, l0, l2):
         import Utility as Ut
-        from Tomomod import UBWO, Proj, PauliN
+        from Tomomod import PauliN
+        from Utility import UBWO, Proj
         Ufull.update_full_operators(time=x, tind=[0])
         Op_BW = UBWO(Ufull.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
@@ -278,7 +271,8 @@ class Optimizer():
 
     @staticmethod
     def min_DP_t2_S3(x, Ufull, Op, dim, l0, l3):
-        from Tomomod import UBWO, Proj, PauliN
+        from Tomomod import PauliN
+        from Utility import UBWO, Proj
         Ufull.update_full_operators(time=x, tind=[1])
         Op_BW = UBWO(Ufull.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
@@ -294,8 +288,7 @@ class Optimizer():
 
     @staticmethod
     def set_evolution_operator(dim:int, met:dict, tar:dict, var=None, par=None):
-        """
-        Sets the evolution operator based on pulse strength(s), rotational constant and time delay(s).
+        """Set the evolution operator based on pulse strength(s), rotational constant and time delay(s).
 
             Args:
                 dim: int
@@ -404,6 +397,59 @@ class Optimizer():
         U = self.set_evolution_operator(self.dim, self.method['Method'], self.target['Target'], self.varlist, self.paramlist)
         opt = self.minimizer(U)
         self.opt = opt
+        #if self.method['Method'] == 'SP':
+        #    if self.target['Target'] == 'S3':
+        #        U = Ut.ImpulseEvolutionOperator(self.varlist['P1'], self.dim)
+        #        opt = minimize(self.min_SP, x0=self.varlist['P1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
+        #        self.opt = opt
+        #    elif self.target['Target'] == 'S1':
+        #        U = Ut.FullEvolutionOperator(self.paramlist['P1'], self.paramlist['B'], self.varlist['t1'], self.dim)
+        #        opt = minimize(self.min_SP_S1, x0=self.varlist['t1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
+        #        self.opt = opt
+        #    elif self.target['Target'] == 'S2':
+        #        U = Ut.FullEvolutionOperator(self.paramlist['P1'], self.paramlist['B'], self.varlist['t1'], self.dim)
+        #        opt = minimize(self.min_SP_S2, x0=self.varlist['t1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l2']))
+        #        self.opt = opt
+        #elif self.method['Method'] == 'SP_t1':
+        #    U = Ut.FullEvolutionOperator(self.paramlist['P1'], self.B, self.varlist['t1'], self.dim)
+        #    if self.target == 'S1':
+        #        opt = minimize(self.min_SP_t1, x0=self.varlist['t1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
+        #    elif self.target == 'S2':
+        #        opt = minimize(self.min_SP_t1, x0=self.varlist['t1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
+#
+        #    self.opt = opt
+
+        #elif self.method['Method'] == 'DP_t2':
+        #    if self.target['Target'] == 'S1':
+        #        Pulses = Ut.Pulses([self.paramlist['P1'], self.paramlist['P2']], [0., self.varlist['t2']])
+        #        U = Ut.EvolutionOperators(Pulses, self.paramlist['B'], self.dim)
+        #        opt = minimize(self.min_DP_t2_S1, x0=[self.varlist['t2']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
+        #        self.opt = opt
+        #    elif self.target['Target'] == 'S2':
+        #        Pulses = Ut.Pulses([self.paramlist['P1'], self.paramlist['P2']], [0., self.varlist['t2']])
+        #        U = Ut.EvolutionOperators(Pulses, self.paramlist['B'], self.dim)
+        #        opt = minimize(self.min_DP_t2_S2, x0=[self.varlist['t2']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l2']))
+        #        self.opt = opt
+        #    elif self.target['Target'] == 'S3':
+        #        print(self.varlist['t2'])
+        #        print(self.paramlist['P1'], self.paramlist['P2'], self.lagrange['l0'], self.lagrange['l3'])
+                #print(self._min_DP_t2_S3(self.varlist['t2'], self.paramlist['P1'], self.paramlist['P2'], self.lagrange['l0'], self.lagrange['l3']))
+        #        self.test(self.varlist['t2'])
+        #        opt, tol = minimize(self._min_DP_t2_S3, x0=[self.varlist['t2']], args=(self.paramlist['P1'], self.paramlist['P2'], self.lagrange['l0'], self.lagrange['l3']))
+                #opt, tol = minimize(self.test, x0=3.)
+        #    else:
+        #        raise Exception('Unrecognized target:', self.target['Target'], 'for optimization', self.method['Method'])
+        #else:
+        #    raise Exception('Method:', self.method['Method'], 'not implemented yet')
+
+
+        #rint('In optimize')
+
+    #def optimize_SP_S3(self):
+    #    print('In optimize_SP_S3')
+
+    #def optimize_DP_t2_S3(self):
+    #    print('In optimize_DPt2_S3')
 
     def optimization(self) -> None:
         """
