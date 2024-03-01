@@ -449,27 +449,27 @@ def sigmaFromFWHM(FWHM):
 # Impulse approximation
 
 # The impulse Hamiltonian
-def HI(P,n, odd=False):
-    Hm = -P * get_HIntMat(n, odd)
+def HI(P,n, odd=False, full=False):
+    Hm = -P * get_HIntMat(n, odd, full)
     H = Qobj(Hm)
     return H
 
 # The impulse Hamiltonian mult. by -i
-def HImi(P,n, odd=False):
-    Hm = 1.j*P * get_HIntMat(n, odd)
+def HImi(P,n, odd=False, full=False):
+    Hm = 1.j*P * get_HIntMat(n, odd, full)
     H = Qobj(Hm)
     return H
 
 # The impulse evolution operator
-def UI(P,n, odd=False):
-    Hm = 1.j*P * get_HIntMat(n, odd)
+def UI(P,n, odd=False, full=False):
+    Hm = 1.j*P * get_HIntMat(n, odd, full)
     H = Qobj(Hm)
     U = H.expm()
     return U
 
 # The free evolution operator
-def Uf(B, t, n, odd=False):
-    H = -1.j*t*H0(B,n, odd)
+def Uf(B, t, n, odd=False, full=False):
+    H = -1.j*t*H0(B,n, odd, full)
     U = H.expm()
     return U
 
