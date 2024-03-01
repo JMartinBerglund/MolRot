@@ -98,7 +98,7 @@ class Optimizer():
         S0 = Proj(Op_BW, PauliN(0, dim))
         S3 = Proj(Op_BW, PauliN(3, dim))
         #print(S0, S3)
-        L = l0 * (S0 - 1.)**2. - l3 * S3**2.
+        L = l0 * (S0 - 1.)**2. + l3 * S3**2.
 
         return L
 
@@ -248,7 +248,8 @@ class Optimizer():
     @staticmethod
     def min_DP_t1_S1(x, Ufull, Op, dim, l0, l1):
         import Utility as Ut
-        from Tomomod import UBWO, Proj, PauliN
+        from Utility import UBWO, Proj
+        from Tomomod import PauliN
         Ufull.update_full_operators(time=x, tind=[0])
         Op_BW = UBWO(Ufull.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
@@ -281,10 +282,19 @@ class Optimizer():
         return l0 * (S0 - 1.)**2. + l3 * S3**2.
 
     @staticmethod
-    def test(x):
-        print(x)
+    def min_DP_omega_S3(x, Ufull, Op, dim, l0, l3):
+        from Tomomod import PauliN
+        from Utility import UBWO, Proj
+        P1 = x * (Ufull.Pulses.P[0] + Ufull.Pulses.P[1])
+        P2 = (1. - x) * (Ufull.Pulses.P[0] + Ufull.Pulses.P[1])
+        Ufull.update_full_operators(P=[P1, P2], Pind=[0,1])
+        Op_BW = UBWO(Ufull.U, Op)
+        S0 = Proj(Op_BW, PauliN(0, dim))
+        S3 = Proj(Op_BW, PauliN(3, dim))
 
-        return x
+        return l0 * (S0 - 1.)**2. + l3 * S3**2.
+
+
 
     @staticmethod
     def set_evolution_operator(dim:int, met:dict, tar:dict, var=None, par=None):
@@ -310,40 +320,32 @@ class Optimizer():
         if tar == 'S3':
             if met == 'SP':
                 U = Ut.ImpulseEvolutionOperator(var['P1'], dim) 
+                return U
             elif met == 'DP_t2':
                 Pulses = Ut.Pulses([par['P1'], par['P2']], [par['t1'], var['t2']])
                 U = Ut.EvolutionOperators(Pulses, par['B'], dim)
-                #print("Method", met, "under development")
-                #raise Exception
-                #U = Ut.FullEvolutionOperator(0., 0., 0., dim)
-                #print("WARNING:", met, 'needs impementation, returning the identiy operator')
+                return U
+            elif met == 'DP_omega':
+                P1 = var['omega'] * par['P']
+                P2 = (1. - var['omega']) * par['P']
+                Pulses = Ut.Pulses([P1, P2], [par['t1'], par['t2']])
+                U = Ut.EvolutionOperators(Pulses, par['B'], dim)
+                return U
             else:
-                print("WARNING:", met, 'not implemented yet!')
-                raise Exception
-                #U = Ut.FullEvolutionOperator(0., 0., 0., dim)
-                #print("WARNING:", met, 'not implemented yet! Returning the identity operator!')
+                raise RuntimeError("WARNING:", met, 'not implemented yet for S3!')
+
         elif (tar == 'S1') or (tar == 'S2'):
             if met == 'SP':
                 U = Ut.FullEvolutionOperator(par['P1'], par['B'], var['t1'], dim) 
+                return U
             elif met == 'DP_t1':
                 Pulses = Ut.Pulses([par['P1'], par['P2']], [var['t1'], par['t2']])
                 U = Ut.EvolutionOperators(Pulses, par['B'], dim)
-                #print("Method", met, "under development")
-                #raise Exception
-                    #U = Ut.FullEvolutionOperator(0., 0., 0., dim)
-                    #print("WARNING:", met, 'needs impementation, returning the identiy operator')
+                return U
             else:
-                print("WARNING:", met, 'not implemented yet!')
-                raise Exception
-                    #U = Ut.FullEvolutionOperator(0., 0., 0., dim)
-                    #print("WARNING:", met, 'not implemented yet! Returning the identity operator!')
+                raise RuntimeError("WARNING:", met, 'not implemented yet for S1, S2!')
         else:
-            print("WARNING:", met, 'not implemented yet!')
-            raise Exception
-            #U = Ut.FullEvolutionOperator(0., 0., 0., dim)
-            #print("WARNING:", met, 'not implemented yet! Returning the identity operator!')
-
-        return U
+            raise RuntimeError("WARNING:", met, 'not implemented yet for S1, S2!')
 
 
     def minimizer(self, U):
@@ -362,10 +364,11 @@ class Optimizer():
             if self.method['Method'] == 'SP':
                 opt = minimize(self.min_SP, x0=self.varlist['P1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
             elif self.method['Method'] == 'DP_t2':
-                #Check variable and parameter consistency
                 opt = minimize(self.min_DP_t2_S3, x0=[self.varlist['t2']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
+            elif self.method['Method'] == 'DP_omega':
+                opt = minimize(self.min_DP_omega_S3, x0=[self.varlist['omega']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
             else:
-                raise Exception
+                raise RuntimeError("No valid method given for S3 minimization:", self.method['Method'])
         
         elif self.target['Target'] == 'S1':
             if self.method['Method'] == 'SP':
@@ -373,7 +376,7 @@ class Optimizer():
             elif self.method['Method'] == 'DP_t1':
                 opt = minimize(self.min_DP_t1_S1, x0=[self.varlist['t1']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
             else:
-                raise Exception
+                raise RuntimeError("No valid method given for S1 minimization:", self.method['Method'])
         
         elif self.target['Target'] == 'S2':
             if self.method['Method'] == 'SP':
@@ -381,7 +384,7 @@ class Optimizer():
             elif self.method['Method'] == 'DP_t1':
                 opt = minimize(self.min_DP_t1_S2, x0=[self.varlist['t1']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l2']))
             else:
-                raise Exception
+                raise RuntimeError("No valid method given for S2 minimization:", self.method['Method'])
 
         else:
             raise Exception
@@ -394,6 +397,7 @@ class Optimizer():
         """
         from scipy.optimize import minimize
         import Utility as Ut
+
         U = self.set_evolution_operator(self.dim, self.method['Method'], self.target['Target'], self.varlist, self.paramlist)
         opt = self.minimizer(U)
         self.opt = opt
@@ -471,8 +475,11 @@ class Optimizer():
                     self.optimize()
                 else:
                     raise Exception
+            elif met == 'DP_omega':
+                if ('P' in par) and ('t2' in par) and ('omega' in var):
+                    self.optimize()
             else:
-                print("At the moment we are only focusing on the SP and DP_t2 methods.", met, "will hopefully be implemented soon")
+                print("At the moment we are only focusing on the SP, DP_t2 and DP_omega methods for target S3", met, "will hopefully be implemented soon")
                 self.opt = None
 
         elif (tar == 'S1') or (tar == 'S2'):
