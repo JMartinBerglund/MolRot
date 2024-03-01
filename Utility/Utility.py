@@ -267,40 +267,85 @@ def H0(B, n, odd=False) -> float:
     H = Qobj(Hmat)
     return H
 
-def get_HIntMat(n, odd=False):
+def get_HIntMat(n, odd=False, full=False):
     """
     The cos^2(theta) - matrix in the (j,m=0) representation
     """
-    Hmat = np.zeros((n,n))
-    for i in range(n):
+    from numpy import matmul
+
+    if full:
+        Hd = get_Hdip_Mat(n)
+        Hmat = matmul(Hd, Hd)
+        j = float(n-1)
+        Hmat[-1, -1] = (2.*j + 1.)**(-1.) * ((j + 1.)**2./(2.*j + 3.) + j**2./(2.*j - 1.))
+
+    else:
+        Hmat = np.zeros((n,n))
         jplus = 0.
         if odd:
             jplus = 1.
-        j = 2.*float(i) + jplus
-        Hmat[i,i] = (2.*j + 1.)**(-1.) * ((j + 1.)**2./(2.*j + 3.) + j**2./(2.*j - 1.))
-        if i != n-1:
-            Hmat[i,i+1] = (j + 1.) * (j + 2.) / ((2.*j + 1.) * (2.*j + 3.)) * math.sqrt((2*j + 1.) / (2.*j + 5.))
-            Hmat[i+1,i] = Hmat[i,i+1]
+            
+        for i in range(n):
+            j = 2.*float(i) + jplus
+            Hmat[i,i] = (2.*j + 1.)**(-1.) * ((j + 1.)**2./(2.*j + 3.) + j**2./(2.*j - 1.))
+            if i != n-1:
+                Hmat[i,i+1] = (j + 1.) * (j + 2.) / ((2.*j + 1.) * (2.*j + 3.)) * math.sqrt((2*j + 1.) / (2.*j + 5.))
+                Hmat[i+1,i] = Hmat[i,i+1]
 
     return Hmat
 
+def get_Hdip_Mat(n):
+    """
+    The cos(theta) - matrix in the (j,m=0) representation
+    """
+    Hmat = np.zeros((n,n))
+    for i in range(n-1):
+        Hmat[i, i+1] = (float(i) + 1.) / math.sqrt( (2.*float(i) + 3.) * (2.*float(i) + 1.))
+        Hmat[i+1, i] = Hmat[i, i+1]
+
+    return Hmat
 
 
 
 # The static part of the interaction Hamiltonian
 # @descr: This part of the time dependent Hamiltonian will be multiplied with
 #         a Gaussian pulse to form the time dependent interaction Hamiltonian 
-def H1(Da, n, odd=False):
-    Hm = get_HIntMat(n, odd)
+def H1(Da, n, odd=False, full=False):
+    """
+    The polarizability anisotropy Hamiltonian for $m=0$
+    """
+    Hm = get_HIntMat(n, odd, full)
     H = Qobj(Hm)
     return -0.25*Da*H
 
 # The static part of the interaction Hamiltonian when using the intensity rather than the electric field
-def H1_I0(Da, n, odd=False):
+def H1_I0(Da:float, n:int, odd=False, full=False):
     from parameters import eps0, c
-    Hm = get_HIntMat(n, odd)
+    Hm = get_HIntMat(n, odd, ful, full)
     H = Qobj(Hm)
     return -Da / (2.*eps0*c) * H
+
+def H2(D:float, n:int):
+    """
+    The dipole Hamiltonian for $m=0$
+    Args:
+    -----
+        D: float
+            The dipole moment
+        n; int
+            The dimension of the basis
+
+    Returns:
+    --------
+        H: Qobj
+            The dipole Hamiltonian excluding the electric field
+    """
+
+    Hm = get_Hdip_Mat(n)
+    H = Qobj(Hm)
+    
+    return -D*H
+
 
 # The Gaussian pulse
 def Gauss(t:float, t0:float, I0:float, sigma:float) -> float:
@@ -321,7 +366,7 @@ def Gauss(t:float, t0:float, I0:float, sigma:float) -> float:
             pulse: float
                 The Gaussian at the specified time t
     """
-    pulse = I0*math.exp(-(t-t0)**2./(2.*sigma)**2.)
+    pulse = I0*math.exp(-(t-t0)**2./(2.*sigma**2.))
     return pulse
 
 def double_Gauss(t, t0, tau, I01, I02, sigma1, sigma2):
@@ -330,22 +375,54 @@ def double_Gauss(t, t0, tau, I01, I02, sigma1, sigma2):
 
 # The Gaussian pulse for mesolver
 def Gauss_me(t, args):
-    return args['I0'] * math.exp(-(t-args['t0'])**2./(2.*args['sigma'])**2.)
+    return args['I0'] * math.exp(-(t-args['t0'])**2./(2.*args['sigma']**2.))
 
 def double_Gauss_me(t, args):
     return args['I01'] * math.exp(-(t - args['t0'])**2./(2.*args['sigma']**2.)) + args['I02'] * math.exp(-(t - args['tau'])**2./(2.*args['sigma']**2.))
 
 # Get the intensity from fluence and sigma
-def getI0(P,sigma, deltaalpha):
+def getI0(P:float, sigma:float, deltaalpha:float) -> float:
+    """
+    Obtains the maximum pulse intensity from the pulse strength, width and polarizability anisotropy
+
+    Args:
+        P: float
+            The pulse strength
+        sigma: float
+            the pulse width
+        deltaalpha: float
+            The polarizability anisotropy
+
+    Returns:
+        I0: float
+            The maximum pulse intensity
+    """
     from parameters import eps0, c
     I0 = 2.*eps0*c * P / (math.sqrt(2.*math.pi) * deltaalpha * sigma)
     return I0
 
 # Get P from I0 and sigma
 def getP(deltaalpha,I0,sigma):
+    """
+    Obtains the pulse strength from the polarizability anisotropy, maximum pulse intensity and width
+
+    Args:
+        deltaalpha: float
+            The polarizability anisotropy
+        I0: float
+            The maximum pulse intensity
+            The pulse strength
+        sigma: float
+            the pulse width
+
+    Returns:
+        P: float
+            The pulse strength
+    """
+
     from parameters import eps0, c
+    #P = math.sqrt(2.*math.pi) * deltaalpha/(2.*eps0*c) * I0 * sigma
     P = math.sqrt(2.*math.pi) * deltaalpha/(2.*eps0*c) * I0 * sigma
-    print("P:", P)
     return P
 
 # Get P from integration
@@ -354,7 +431,8 @@ def getP_int(Da, I0, t0, sigma):
     from parameters import eps0, c
     intI, tol = quad(Gauss, -np.inf,np.inf,args=(t0, I0, sigma))
     # Where does the factor sqrt(0.5) come from??
-    return Da / (2.*eps0*c) * math.sqrt(0.5) * intI
+    #return Da / (2.*eps0*c) * math.sqrt(0.5) * intI
+    return Da / (2.*eps0*c) * intI
 
 # Obtain \sigma_I (in atomic units) from T_FWHM (fs)
 def sigmaFromFWHM(FWHM):
