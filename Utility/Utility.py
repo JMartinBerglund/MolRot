@@ -237,7 +237,7 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
 """
 Methods fro defining various Hamitonians and operations on the Hamiltonians based on QuTiP Qobj
 """
-def H0(B, n, odd=False) -> float:
+def H0(B, n, odd=False, full=False):
     """
     The free Hamiltonian operator
         
@@ -257,13 +257,18 @@ def H0(B, n, odd=False) -> float:
                 The free Hamiltonian
     """
     Hmat = np.zeros((n,n))
-    jplus = 0.
-    if odd:
-        jplus = 1.
+    if full:
+        for i in range(n):
+            j = float(i)
+            Hmat[i,i] = j * (j + 1.) * B
+    else:
+        jplus = 0.
+        if odd:
+            jplus = 1.
 
-    for i in range(n):
-        j = 2.*float(i) + jplus
-        Hmat[i,i] = j * (j + 1.) * B
+        for i in range(n):
+            j = 2.*float(i) + jplus
+            Hmat[i,i] = j * (j + 1.) * B
     H = Qobj(Hmat)
     return H
 
