@@ -272,6 +272,58 @@ def H0(B, n, odd=False, full=False):
     H = Qobj(Hmat)
     return H
 
+def H0_m(B:float, jmax:int, odd=False, full=False):
+    """
+    The free Hamiltonian operator
+        
+        Args:
+            B: float
+                The rotational constant
+
+            jmax; int
+                The max j
+
+            odd: Boolean
+                True for odd states. False for even states
+
+        Returns:
+
+            H: Qobj
+                The free Hamiltonian
+    """
+    if full:
+        Hmat = np.zeros(((jmax+1)**2, (jmax+1)**2))
+        for j in range(jmax+1):
+            jf = float(j)
+            for m in range(-j,j+1):
+                i = (j+1)**2 - j + m - 1
+                Hmat[i,i] = jf * (jf + 1.) * B
+    else:
+        n = int((jmax+1)*(jmax+2)/2)
+        Hmat = np.zeros((n, n))
+        jplus = 0
+        if odd:
+            jplus = 1
+            if jmax % 2 == 0:
+                raise ValueError("Expected an odd integer, got", jmax) 
+        else:
+            if jmax % 2 != 0:
+                raise ValueError("Expected an even integer, got", jmax) 
+        jsub = 0
+        for j in range(jplus, jmax+1, 2):
+            jp = float(j)
+            if j != jplus:
+                jsub += 2*(j-1) + 1
+                #print(j, jsub)
+            for m in range(-j, j+1):
+                i = (j+1)**2 - j + m - 1 - jsub - jplus
+                print(j,m,i)
+                Hmat[i,i] = jp * (jp + 1.) * B
+    H = Qobj(Hmat)
+    return H
+
+
+
 def get_HIntMat(n, odd=False, full=False):
     """
     The cos^2(theta) - matrix in the (j,m=0) representation
@@ -326,13 +378,13 @@ def H1(Da, n, odd=False, full=False):
 # The static part of the interaction Hamiltonian when using the intensity rather than the electric field
 def H1_I0(Da:float, n:int, odd=False, full=False):
     from parameters import eps0, c
-    Hm = get_HIntMat(n, odd, ful, full)
+    Hm = get_HIntMat(n, odd, full)
     H = Qobj(Hm)
     return -Da / (2.*eps0*c) * H
 
 def H2(D:float, n:int):
     """
-    The dipole Hamiltonian for $m=0$
+    The dipole Hamiltonian/eps for $m=0$
     Args:
     -----
         D: float
@@ -350,6 +402,30 @@ def H2(D:float, n:int):
     H = Qobj(Hm)
     
     return -D*H
+
+def H_dip(eps:float, D:float, n:int):
+    """
+    The dipole Hamiltonian for $m=0$
+    Args:
+    -----
+        eps: float
+            The electric field strength
+        D: float
+            The dipole moment
+        n; int
+            The dimension of the basis
+
+    Returns:
+    --------
+        H: Qobj
+            The dipole Hamiltonian
+    """
+
+    Dmat = H2(D, n)
+
+    return eps*Dmat
+
+
 
 
 # The Gaussian pulse
