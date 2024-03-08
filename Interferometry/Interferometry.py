@@ -189,6 +189,68 @@ class ImpactInterferometry(Interferometry):
         
         self.inter = inter
 
+class ImpactEfieldInterferometry(Interferometry):
+    """
+    Interferometry in the impact approximation
+    """
+
+    def __init__(self, Ps=None, ts=None, B=1., eps=0., D=0., istate=None,  mstate=0, dim=3, Name=None) -> None:
+        """
+        Text
+        """
+        super().__init__(istate, mstate, B, dim, Name)
+        self.Ps       = Ps
+        self.eps      = eps
+        self.D        = D
+        self.tau      = ts
+        
+
+
+    def set_pulses(self, Ps, ts) -> None:
+        """
+        Sets the pulses for the interferometry instance
+            
+            Args: 
+                Ps: Array of floats 
+                    Contains the pulse strengths 
+                ts: Array of floats
+                    The time delays
+        """
+        import Utility as Ut
+        Pulses = Ut.Pulses(Ps, ts)
+        self.Pulses = Pulses
+
+    def set_EvolutionOperator(self) -> None:
+        """
+        Sets the Evolution operator based on the pulse strengths and time delay
+        """
+        from Utility import FullEfieldEvolutionOperator,  U2U1
+        U1 = FullEfieldEvolutionOperator(self.Pulses.P[0], self.B, self.Pulses.t[0], self.eps, self.D, dim=self.dim)
+        U2 = FullEfieldEvolutionOperator(self.Pulses.P[1], self.B, self.Pulses.t[1], self.eps, self.D, dim=self.dim)
+        self.U = U2U1(U2.U, U1.U) #U2.U * U1.U
+
+    def run_interferometry(self):
+        """
+        Runs an interferometry run and records final time delay dependent populatins
+        """
+        from qutip import ket2dm, basis
+        from Utility import Proj
+        lt = len(self.tau)
+        inter = np.zeros(lt)
+        Op = ket2dm(basis(self.dim, self.mstate))
+        for i in range(lt):
+            self.set_pulses(self.Ps, [0., self.tau[i]])
+            self.set_EvolutionOperator()
+            fstate = self.U * self.istate
+            dm = ket2dm(fstate)
+            inter[i] = Proj(Op,dm)
+            #fspop  = fstate.extract_states(self.mstate)
+            #inter[i] = abs(fspop.overlap(fspop))**2. 
+            
+        
+        self.inter = inter
+
+
 class PulsesInterferometry(Interferometry):
     """
     Interferometry taking the full effect o the pulses into account
@@ -302,3 +364,97 @@ class PulsesInterferometry(Interferometry):
             dm = ket2dm(output.final_state)
             inter[i] = Proj(Op, dm)
         self.inter = inter
+
+
+
+class PulsesEfieldInterferometry(Interferometry):
+    """
+    Interferometry taking the full effect o the pulses into account
+    """
+
+    def __init__(self, Pulsepara=None, time=[], molpara=None, istate=None, mstate=0, dim=3, Name=None) -> None:
+        """
+        Initialization routine for a two orr-resonance fs-pulse interferometry run
+
+            Args:
+            -----
+
+            Pulsepara: dict
+                Contains the pulse paramters, I0, sigma, t0
+
+            time: array of floats
+                Time grid for the interferometer
+
+            molpara: dict
+                Contains the molecular parameters, B, dip and Da
+
+            istate: Qobj
+                The initial state
+
+            mstate: int
+                The state on which to measure the final population
+
+            dim: int
+                The dimenstion of the basis
+
+            Name: str
+                Name of the instance
+        """
+        import Utility as Ut
+        try:
+            super().__init__(istate, mstate, molpara['B'], dim, Name)
+        except KeyError as e:
+            raise Exception(e)
+        
+        if Pulsepara is not None:
+            try:
+                self.I0    = [Pulsepara['I01'], Pulsepara['I02']]
+                self.sigma = Pulsepara['sigma']
+                self.t0    = Pulsepara['t0']
+                self.tau   = Pulsepara['tau']
+                self.eps   = Pulsepara['eps']
+                self.time  = time
+            except KeyError as e:
+                raise Exception(e)
+        else:
+            self.I0    = None
+            self.sigma = None
+            self.t0    = None
+            self.tau   = None
+            self.eps   = None
+            self.time  = []
+        if molpara is not None:
+            try:
+                self.Da  = molpara['Da']
+                self.dip = molpara['D']
+            except KeyError as e:
+                raise Exception(e)
+        else:
+            self.Da  = None
+            self.dip = None
+
+    def run_interferometry(self, options=None) -> None:
+        """
+        Runs an interferometry run and records final time delay dependent populatins
+        """
+        from qutip import mesolve, ket2dm, basis, Options
+        from Utility import H0, H1_I0, H_dip, double_Gauss_me, Proj
+        H0 = H0(self.B, self.dim, full=True) + H_dip(self.eps, self.dip, self.dim)
+        HI = H1_I0(self.Da, self.dim, full=True)
+        ltau = len(self.tau)
+        Op = ket2dm(basis(self.dim, self.mstate))
+        inter = np.zeros(ltau)
+        if options is None:
+            options = Options(store_final_state=True)
+        else:
+            if options.store_final_state == False:
+                print("Warning, must store final state in order to record final state population. Setting to True!")
+                options.store_final_state = True
+        for i in range(ltau):
+            output = mesolve([H0, [HI, double_Gauss_me]], self.istate, self.time, e_ops=[Op], options=options, args={'t0': self.t0,'I01': self.I0[0], 'I02': self.I0[1],'sigma': self.sigma, 'tau': self.tau[i]})
+
+            dm = ket2dm(output.final_state)
+            inter[i] = Proj(Op, dm)
+        self.inter = inter
+
+
