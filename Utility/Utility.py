@@ -138,6 +138,79 @@ class FreeEvolutionOperator(EvolutionOperator):
         print("Rotational constant:", self.B, '(au)')
         print("Time delay:", self.t, '(au)')
 
+class FreeEfieldEvolutionOperator(EvolutionOperator):
+    """Class for representing free evolution operators in the impact approximation"""
+
+    def __init__(self, B=1., t=0., eps=0., D=0., dim=2, name=None, odd=False):
+        super().__init__(dim, Otype="freeEfield", name=name, odd=odd)
+        self.B   = B
+        self.t   = t
+        self.eps = eps
+        self.D   = D
+        self.Uf  = UfE(B, t, eps, D, dim, odd)
+
+
+    def update_B(self, B):
+        """
+        Update the rotational constant
+        """
+        try:
+            self.B = B
+        except TypeError as e:
+            raise Exception(e)
+
+
+    def update_time(self, t):
+        """
+        Update the propagation time
+        """
+        try:
+            self.t = t
+        except TypeError as e:
+            raise Exception(e)
+
+    def update_eps(self, eps):
+        """
+        Update the electric field strength
+        """
+        try:
+            self.eps = eps
+        except TypeError as e:
+            raise Exception(e)
+
+    def update_D(self, D):
+        """
+        Update the dipole moment
+        """
+        try:
+            self.D = D
+        except TypeError as e:
+            raise Exception(e)
+
+
+    def update_free_operator(self, which, value):
+        """
+        Updates the free evolution operator
+        """
+        if which == "B":
+            self.update_B(value)
+        elif which == "t":
+            self.update_time(value)
+        elif which == 'eps':
+            self.update_eps(value)
+        elif which == 'D':
+            self.update_D(value)
+        self.Uf = UfE(self.B, self.t, self.eps, self.D, self.dim, self.odd)
+
+
+    def print_free_operator_info(self, supress=False):
+        if not supress:
+            self.print_operator_info()
+        print("Rotational constant:", self.B, '(au)')
+        print("Time delay:", self.t, '(au)')
+        print("Efield:", self.eps, '(au)')
+        print("Dipole moment:", self.D, '(au)')
+
 
 
 class FullEvolutionOperator(ImpulseEvolutionOperator, FreeEvolutionOperator):
@@ -155,6 +228,38 @@ class FullEvolutionOperator(ImpulseEvolutionOperator, FreeEvolutionOperator):
         self.t = t
         self.U = self.Up * self.Uf
         self.Otype = "full"
+
+
+    def update_full_operator(self, P=None, which=None, value=0.):
+        if P is not None:
+            self.update_pulse_operator(P)
+        if which is not None:
+            self.update_free_operator(which, value)
+        self.U = self.Up * self.Uf
+
+    def print_full_operator_info(self):
+        self.print_operator_info()
+        self.print_pulse_operator_info(supress=True)
+        self.print_free_operator_info(supress=True)
+
+
+class FullEfieldEvolutionOperator(ImpulseEvolutionOperator, FreeEfieldEvolutionOperator):
+    """Class for representing combined free and pulse evolution operators in the impact approximation"""
+
+    def __init__(self, P=0., B=1., t=0., eps=0., D=0., dim=2, name=None, odd=False):
+        """
+        The full operator constructor
+        """
+        EvolutionOperator.__init__(self, dim, Otype="fullEfield", name=name, odd=odd)
+        self.Up    = UI(P, dim, odd, full=True)
+        self.P     = P
+        self.Uf    = UfE(B, t, eps, D, dim)
+        self.B     = B
+        self.t     = t
+        self.eps   = eps
+        self.D     = D
+        self.U     = U2U1(self.Up, self.Uf) #self.Up * self.UfE
+        self.Otype = "fullEfield"
 
 
     def update_full_operator(self, P=None, which=None, value=0.):
@@ -272,56 +377,6 @@ def H0(B, n, odd=False, full=False):
     H = Qobj(Hmat)
     return H
 
-def H0_m(B:float, jmax:int, odd=False, full=False):
-    """
-    The free Hamiltonian operator
-        
-        Args:
-            B: float
-                The rotational constant
-
-            jmax; int
-                The max j
-
-            odd: Boolean
-                True for odd states. False for even states
-
-        Returns:
-
-            H: Qobj
-                The free Hamiltonian
-    """
-    if full:
-        Hmat = np.zeros(((jmax+1)**2, (jmax+1)**2))
-        for j in range(jmax+1):
-            jf = float(j)
-            for m in range(-j,j+1):
-                i = (j+1)**2 - j + m - 1
-                Hmat[i,i] = jf * (jf + 1.) * B
-    else:
-        n = int((jmax+1)*(jmax+2)/2)
-        Hmat = np.zeros((n, n))
-        jplus = 0
-        if odd:
-            jplus = 1
-            if jmax % 2 == 0:
-                raise ValueError("Expected an odd integer, got", jmax) 
-        else:
-            if jmax % 2 != 0:
-                raise ValueError("Expected an even integer, got", jmax) 
-        jsub = 0
-        for j in range(jplus, jmax+1, 2):
-            jp = float(j)
-            if j != jplus:
-                jsub += 2*(j-1) + 1
-                #print(j, jsub)
-            for m in range(-j, j+1):
-                i = (j+1)**2 - j + m - 1 - jsub - jplus
-                print(j,m,i)
-                Hmat[i,i] = jp * (jp + 1.) * B
-    H = Qobj(Hmat)
-    return H
-
 
 
 def get_HIntMat(n, odd=False, full=False):
@@ -426,8 +481,6 @@ def H_dip(eps:float, D:float, n:int):
     return eps*Dmat
 
 
-
-
 # The Gaussian pulse
 def Gauss(t:float, t0:float, I0:float, sigma:float) -> float:
     """
@@ -460,6 +513,34 @@ def Gauss_me(t, args):
 
 def double_Gauss_me(t, args):
     return args['I01'] * math.exp(-(t - args['t0'])**2./(2.*args['sigma']**2.)) + args['I02'] * math.exp(-(t - args['tau'])**2./(2.*args['sigma']**2.))
+
+
+def Lorentz(x:float, x0:float, eps:float, gamma:float, offset:float) -> float:
+    """
+    The Lorentzian profile
+
+    Args:
+    -----
+        x: float
+            The argument at which to evalueate the Lorentzian
+        x0: float
+            The center of the Lorentzian
+        eps: float
+            The maximum of the Lorentizan
+        gamma: float
+            The widt of the Lorentzian
+        offset: float
+            Shift in the vertical
+
+    Returns:
+    --------
+        Lorentz: float
+            The Lorentzian profile
+    """
+
+    Lorentz = eps * 0.25 * gamma**2. / ((x - x0)**2. + 0.25 * gamma**2.) + offset
+
+    return Lorentz
 
 # Get the intensity from fluence and sigma
 def getI0(P:float, sigma:float, deltaalpha:float) -> float:
@@ -549,6 +630,17 @@ def Uf(B, t, n, odd=False, full=False):
     U = H.expm()
     return U
 
+# The free evolution operator with constant electric field
+def UfE(B, t, eps, D, n):
+    Hrot   = H0(B,n, odd=False, full=True)
+    Hdip   = eps * H2(D, n)
+    H      = Hrot + Hdip
+    O      = -1.j* H * t
+
+    U = O.expm()
+    return U
+
+
 
 # Composition of two evolution operators
 def U2U1(U2, U1):
@@ -607,5 +699,114 @@ def Proj(O1, O2):
     O = O1*O2
     
     return O.tr()
+
+# Thing with non-zero m
+
+def index(j:int ,m:int) -> int:
+    """
+    Retruns the index of the matrix or vector
+
+    Args:
+    -----
+        j: int
+            The j quantum number
+        m: int
+            The m quantum number
+
+    Returns:
+    --------
+        i: int
+            The index
+    """
+
+    i = j * (j + 1) + m
+
+    return i
+
+
+def H0_m(B:float, jmax:int, odd=False, full=False):
+    """
+    The free Hamiltonian operator
+        
+        Args:
+            B: float
+                The rotational constant
+
+            jmax; int
+                The max j
+
+            odd: Boolean
+                True for odd states. False for even states
+
+        Returns:
+
+            H: Qobj
+                The free Hamiltonian
+    """
+    if full:
+        Hmat = np.zeros(((jmax+1)**2, (jmax+1)**2))
+        for j in range(jmax+1):
+            jf = float(j)
+            for m in range(-j,j+1):
+                i = (j+1)**2 - j + m - 1
+                Hmat[i,i] = jf * (jf + 1.) * B
+    else:
+        n = int((jmax+1)*(jmax+2)/2)
+        Hmat = np.zeros((n, n))
+        jplus = 0
+        if odd:
+            jplus = 1
+            if jmax % 2 == 0:
+                raise ValueError("Expected an odd integer, got", jmax) 
+        else:
+            if jmax % 2 != 0:
+                raise ValueError("Expected an even integer, got", jmax) 
+        jsub = 0
+        for j in range(jplus, jmax+1, 2):
+            jp = float(j)
+            if j != jplus:
+                jsub += 2*(j-1) + 1
+                #print(j, jsub)
+            for m in range(-j, j+1):
+                i = (j+1)**2 - j + m - 1 - jsub - jplus
+                print(j,m,i)
+                Hmat[i,i] = jp * (jp + 1.) * B
+    H = Qobj(Hmat)
+    
+    return H
+
+def H_dipm_Mat(jmax:int):
+    """
+    """
+
+    Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
+
+    for j in range(jmax):
+        jf = float(j)
+        for m in range(-j, j+1):
+            mf = float(m)
+            i1 = index(j,m)
+            i2 = index(j+1, m)
+            me = math.sqrt((jf + mf + 1.) * (jf - mf + 1.)/((2.*jf + 3.) * (2.*jf + 1.)))
+            Hmat[i1, i2] = me
+            Hmat[i2, i1] = me
+
+    return Hmat
+
+def H_polm_Mat(jmax:int):
+    """
+    """
+    from numpy import matmul
+    
+
+    Hm = H_dipm_Mat(jmax)
+    Hmat = matmul(Hm, Hm)
+    jm = float(jmax)
+    i1 = index(jmax, jmax)
+    i2 = index(jmax, -jmax)
+    Hmat[i1, i1] = (2.*jm + 1.)/((2.*jm + 3.) * (2.*jm + 1.))
+    Hmat[i2, i2] = Hmat[i1, i1] 
+
+    return Hmat
 
 
