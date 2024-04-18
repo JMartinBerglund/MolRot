@@ -95,6 +95,7 @@ class TestFreeEvolutionOperator(unittest.TestCase):
     B      = 3.
     B2     = 1.
     t      = 0.5
+    a      = 0.
     t2     = 1.
     Otype  = "free"
     name   = "TestFreeOperator"
@@ -104,7 +105,7 @@ class TestFreeEvolutionOperator(unittest.TestCase):
     def test_FEO(self): 
         decimalPlace = 12
         # Test init
-        FEo = Ut.FreeEvolutionOperator(self.B, self.t, self.dim, self.name, self.odd)
+        FEo = Ut.FreeEvolutionOperator(self.B, self.t, self.dim, self.a, self.name, self.odd)
         UF  = Ut.Uf(self.B, self.t, self.dim, self.odd)
         UF2 = Ut.Uf(self.B, self.t2, self.dim, self.odd)
         Project = Ut.Proj(UF-FEo.Uf, UF-FEo.Uf)
@@ -155,7 +156,7 @@ class TestHamiltonians(unittest.TestCase):
         self.assertAlmostEqual(H1.matrix_element(self.s2, self.s1), 0.+0.j, decimalPlace)
         self.assertAlmostEqual(H1.matrix_element(self.s2, self.s2), 6.*self.B+0.j, decimalPlace)
 
-        H2 = Ut.H0(self.B, self.dim, True)
+        H2 = Ut.H0(self.B, self.dim, odd=True)
         self.assertEqual(H2.shape[0], 2)
         self.assertEqual(H2.shape[1], 2)
         self.assertEqual(H2.type, self.Htype)
@@ -417,7 +418,181 @@ class testUs(unittest.TestCase):
                 self.assertAlmostEqual(Ut.Proj(Pauli(i), Pauli(k)), 0., decimalPlace)
         
 
+class test_Gaunt(unittest.TestCase):
+    """
+    Testing the gaunt functions for integrals over a product of three spherical harmonics
+    """
 
+    def test_Gaunt_cos(self):
+        decimalPlace = 12
+        c01 = math.sqrt(3.)**(-1.)
+        c121 = math.sqrt(5.)**(-1.)
+        c120 = 2.*math.sqrt(15.)**(-1.)
+        c02 = 0.
+        self.assertAlmostEqual(Ut.Gaunt_cos(1,0,0), c01, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(0,1,0), c01, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(2,1,1), c121, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(1,2,1), c121, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(2,1,0), c120, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(1,2,0), c120, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(2,1,-1), c121, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos(1,2,-1), c121, decimalPlace)
+        #with self.assertRaises(ValueError, Ut.Gaunt_cos(2,0,0)) as ctx:
+        #    print(str(ctx.exception))
+                    #elf.testListNone[:1]
+                        #elf.assertEqual("'NoneType' object is not subscriptable", str(ctx.exception))
+        #elf.assertRaises(ValueError, Ut.Gaunt_cos(2,0,0), "The selection rule for cos operator requires that \Delta j = pm 1")
+
+    def test_Gaunt_sin(self):
+        decimalPlace = 12
+
+        s011   = -math.sqrt(2./3.)
+        s01m1  = -s011
+        s2011  = math.sqrt(2./15.)
+        s201m1 = -s2011 
+        s3322  = -math.sqrt(6./7.) 
+        self.assertAlmostEqual(Ut.Gaunt_sin(1,1, 0,0), s011)
+        self.assertAlmostEqual(Ut.Gaunt_sin(1,-1, 0,0), s01m1)
+        self.assertAlmostEqual(Ut.Gaunt_sin(2,0,1,1), s2011)
+        self.assertAlmostEqual(Ut.Gaunt_sin(2,0,1,-1), s201m1)
+        self.assertAlmostEqual(Ut.Gaunt_sin(3,3,2,2), s3322)
+        self.assertAlmostEqual(Ut.Gaunt_sin(2,2,3,3), s3322)
+
+
+    def test_Gaunt_cos2(self):
+        """
+        Test the diagonal elements of the cos^2{theta} operator
+        """
+        decimalPlace = 12
+        c20   = 1./3.
+        c211  = 1./5.
+        c210  = 3./5.
+        c222  = 1./7.
+        c221  = 3./7.
+        c220  = 11./21.
+
+        self.assertAlmostEqual(Ut.Gaunt_cos2(0,0,0), c20, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(1,1,1), c211, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(1,1,0), c210, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(1,1,-1), c211, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(2,2,2), c222, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(2,2,1), c221, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(2,2,0), c220, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(2,2,-1), c221, decimalPlace)
+        self.assertAlmostEqual(Ut.Gaunt_cos2(2,2, -2), c222, decimalPlace)
+
+
+    def test_Gaunt_cossin(self):
+        decimalPlace = 12
+
+        cs021   = -math.sqrt(2./15.)
+        cs02m1  = -cs021
+
+        s2011  = math.sqrt(2./15.)
+        s201m1 = -s2011
+
+        s101m1 = math.sqrt(2.) / 5.
+        s1011  = -s101m1
+
+        s1132   = -2.*math.sqrt(35.)**(-1.)
+        s1m13m2 = -s1132
+        s1m130  = -1./5.*math.sqrt(6./7.)
+        s1130   = -s1m130
+        s3322   = -math.sqrt(6./7.)
+        s2221   = -2./7.
+        s2120   = -1/7.*math.sqrt(2./3.)
+        s2m120  = -s2120
+        s2m22m1 = -s2221
+        s2243   = -2*math.sqrt(42.)**(-1.)
+        s2241   = 1./7.*math.sqrt(2./3.)
+        s2m24m3 = -s2243
+        s2142   = -4./7.*math.sqrt(3.)**(-1.)
+        s2140   = 8./7.*math.sqrt(30.)**(-1.)
+        s2041   = -2./7.
+        s204m1  = -s2041
+        s2m140  = -s2140
+        s2m14m2 = -s2142
+        s2m24m1 = -s2241
+
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,1, 0,0), cs021)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,-1, 0,0), cs02m1)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(1,0,1,1), s1011)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(1,1,1,0), s1011)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(1,-1,1,0), s101m1)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(1,0,1,-1), s101m1)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(3,2,1,1), s1132)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(3,0,1,1), s1130)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(3,0,1,-1), s1m130)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(3,-2,1,-1), s1m13m2)
+
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,1,2,2), s2221)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,2,2,1), s2221)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,0,2,1), s2120)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,1,2,0), s2120)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,-1,2,0), s2m120)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,0,2,-1), s2m120)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(2,-2,2,-1), s2m22m1)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,3,2,2), s2243)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,1,2,2), s2241)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,2,2,1), s2142)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,0,2,1), s2140)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,1,2,0), s2041)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,-1,2,0), s204m1)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,0,2,-1), s2m140)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,-2,2,-1), s2m14m2)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,-1,2,-2), s2m24m1)
+        self.assertAlmostEqual(Ut.Gaunt_cossin(4,-3,2,-2), s2m24m3)
+
+
+
+
+    def test_Gaunt_sin2(self):
+        decimalPlace = 12
+        s00    = 2./3.
+        s11    = 4./5.
+        s10    = 2./5.
+        s111m1 = -4./5.
+        s2220  = -4./7. * math.sqrt(2./3.)
+        s212m1 = -4./7.
+        s0022  = 2.*math.sqrt(2./15.)
+        s1133  = 2.*math.sqrt(6./35.)
+        s1032  = 2.*math.sqrt(6./(7.*15.))
+        s1m131 = 2./5.*math.sqrt(2./7.)
+
+        with self.subTest(msg="1-cos^2theta"):
+            self.assertAlmostEqual(Ut.Gaunt_sin2(0,0, 0,0), s00)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,-1, 1,-1), s11)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,1, 1,1), s11)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,0, 1,0), s10)
+        with self.subTest(msg="Off diagonals j=1"):
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,-1, 1,1), s111m1)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,1, 1,-1), s111m1)
+        with self.subTest(msg="Off diagonals j=2"):
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,0, 2,2), s2220)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,2, 2,0), s2220)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,-1, 2,1), s212m1)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,1, 2,-1), s212m1)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,-2, 2,0), s2220)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,0, 2,-2), s2220)
+        with self.subTest(msg="Off diagonals j1=0, j2=2"):
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,2, 0,0), s0022)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(2,-2, 0,0), s0022)
+        with self.subTest(msg="Off diagonals j1=1, j2=3"):
+            self.assertAlmostEqual(Ut.Gaunt_sin2(3,3, 1,1), s1133)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,1, 3,3), s1133)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(3,2, 1,0), s1032)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(3,-2, 1,0), s1032)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,0, 3,2), s1032)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,0, 3,-2), s1032)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(3,1, 1,-1), s1m131)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(3,-3, 1,-1), s1133)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,-1, 3,1), s1m131)
+            self.assertAlmostEqual(Ut.Gaunt_sin2(1,-1, 3,-3), s1133)
+
+
+
+class test_Pulseparameters(unittest.TestCase):
+    pass
 
 
  
