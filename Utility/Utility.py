@@ -155,6 +155,7 @@ class FreeEvolutionOperator(EvolutionOperator):
         print("Centrifugal constant::", self.a, '(au)')
         print("Time delay:", self.t, '(au)')
 
+
 class FreeEfieldEvolutionOperator(EvolutionOperator):
     """Class for representing free evolution operators in the impact approximation"""
 
@@ -282,31 +283,52 @@ class FullEvolutionOperator(ImpulseEvolutionOperator, FreeEvolutionOperator):
 class FullEfieldEvolutionOperator(ImpulseEvolutionOperator, FreeEfieldEvolutionOperator):
     """Class for representing combined free and pulse evolution operators in the impact approximation"""
 
-    def __init__(self, P=0., B=1., t=0., eps=0., D=0., dim=2, a=0., name=None, odd=False, mrep=False):
+    def __init__(self, P=0., B=1., t=0., eps=0., D=0., dim=2, a=0., name=None, odd=False, mrep=False, pol=None, alpha=0., beta=0.):
         """
         The full operator constructor
         """
         if mrep is True:
             EvolutionOperator.__init__(self, dim, Otype="fullEfield_m", name=name, odd=odd, mrep=mrep)
+            if pol is None:
+                self.Up    = UI(P, dim, odd, full=True, mrep=mrep)
+            else:
+                self.Up = UI_EFNP(P, dim, pol, alpha, beta, eps, D)
         else:
             EvolutionOperator.__init__(self, dim, Otype="fullEfield", name=name, odd=odd, mrep=mrep)
-        self.Up    = UI(P, dim, odd, full=True, mrep=mrep)
+            self.Up    = UI(P, dim, odd, full=True, mrep=mrep)
+
         self.P     = P
         self.Uf    = UfE(B, t, eps, D, dim, a, mrep)
         self.B     = B
         self.a     = a
         self.t     = t
         self.eps   = eps
+        self.alpha = alpha
+        self.beta  = beta
         self.D     = D
         self.U     = U2U1(self.Up, self.Uf) #self.Up * self.UfE
+        self.pol   = pol
 
-
-    def update_full_operator(self, P=None, which=None, value=0.):
+    def update_pulse_operator(P=None, pol=None, alpha=None, beta=None):
         if P is not None:
-            self.update_pulse_operator(P)
+            self.update_pulse(P)
+        if alpha is not None:
+            self.alpha = alpha
+        if beta is not None:
+            self.beta = beta
+        if pol is None:
+            self.Up    = UI(P, self.dim, self.odd, full=True, mrep=self.mrep)
+        else:
+            self.Up = UI_EFNP(P, self.dim, pol, alpha, beta, self.eps, self.D)
+
+
+
+    def update_full_operator(self, P=None, which=None, value=0., pol=None, alpha=None, beta=None):
+        if (P is not None) or (alpha is not None) or (beta is not none):
+            self.update_pulse_operator(P, pol, alpha, beta)
         if which is not None:
             self.update_free_operator(which, value)
-        self.U = self.Up * self.Uf
+        self.U = U2U1(self.Up, self.Uf)
 
     def print_full_operator_info(self):
         self.print_operator_info()
@@ -385,6 +407,176 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
 #         The pulse only connects even states with even and odd states 
 #         with odd.
 
+
+class Operator():
+    """
+    """
+
+    def __init__(self, dim, mrep=False, mop=True, jstate1=0, mstate1=0, jstate2=0, mstate2=0, hermitean=False):
+        """
+        Construcor
+        """
+        from qutip import basis, qzero, ket2dm, tensor
+
+        self.dim  = dim
+        self.mrep = mrep
+        self.mop  = mop
+
+        if mrep:
+            N = (dim+1)**2
+            self.Op = qzero(N)
+            if mop:
+                j = jstate1
+                if index(j,j) <= N - 1:
+                    for m in range(-j, j+1):
+                        self.Op += ket2dm((basis(N, index(j,m))))
+                else:
+                    print(index(j,j), N-1)
+                    raise ValueError()
+            else:
+                jm = max(jstate1, jstate2)
+                if index(jm, jm) <= N-1:
+                    self.Op += basis(N, index(jstate1, mstate1)) * basis(N, index(jstate2, mstate2)).dag() #tensor((basis(N, index(jstate1,mstate1))), basis(N, index(jstate2,mstate2)))
+                    if hermitean:
+                        self.Op += self.Op.dag() 
+                else:
+                    raise ValueError()
+                
+        else:
+            N = dim
+            print(N)
+            if mop:
+                j = jstate1
+                if j < N:
+                    self.Op = ket2dm((basis(N, j)))
+                else:
+                    raise ValueError()
+            else:
+                jm = max(jstate1, jstate2)
+                if jm < N:
+                    self.Op = basis(N, jstate1) *  basis(N, jstate2).dag()
+                    if hermitean:
+                        self.Op += self.Op.dag() 
+                else:
+                    raise ValueError()
+
+
+
+class QOpt():
+    """
+    Class for handling optimized quantum object preparation.
+    """
+
+    def __init__(self, qobj, qobj0, Pulses, B, a=0.):
+        """
+        The constructor
+        """
+        if qobj.shape[1] == 1:
+            if (qobj.shape[0] == qobj0.shape[0]) and (qobj.shape[1] == 1):
+                self.dim = qobj.shape[0]
+                self.goal = qobj
+                self.init = qobj0
+                self.opt  = "state2state"
+            else:
+                raise Exception
+        else:
+            print("Not yet implemented")
+
+        self.Pulses  = Pulses
+        self.B       = B
+        self.a       = a
+
+        self.setEvOp()
+
+    def setEvOp(self):
+        """
+        Set the initial evolution operator
+        """
+        from qutip import qeye
+        Ui = qeye(self.dim)
+
+        for i in range(len(self.Pulses.P)):
+            Ufree = Uf(self.B, self.Pulses.t[i], int(math.sqrt(self.dim)-1), self.a, mrep=True)
+            #Extend to non-parallel pulses
+            UInt  = UI(self.Pulses.P[i], int(math.sqrt(self.dim)-1), odd=False, full=True, mrep=True)
+            Ui = UInt * Ufree * Ui
+
+        self.U = Ui
+
+
+
+class StateOpt(QOpt):
+    """
+    Class for handling optimized state preparation.
+    """
+
+    def __init__(self, state, istate, Pulses, B, a=0.):
+        """
+        Constructor
+
+            Args:
+                state: Qobj (ket)
+                    The target state
+                istate: Qobj (ket)
+                    The initial state
+                Pulses: Pulses object
+                    The initial guesses for the pulses
+                B: float
+                    The rotational constant
+                a: float
+                    The centrifugal distortion constant
+        """
+        if state.type == 'ket':
+            super().__init__(state, istate, Pulses, B, a)
+        else:
+            raise Exception
+
+        def update_EvOp(self, P, t, B, a, dim):
+            """
+            """
+            from qutip import qeye
+            Ui = qeye(dim)
+            for i in range(len(P)):
+                Ufree = Uf(B, t[i], dim, a, mrep=True)
+                #Extend to non-parallel pulses
+                UInt  = UI(P[i], dim, odd=False, full=True, mrep=True)
+                Ui = UInt * Ufree * Ui
+            U = Ui
+
+            return U
+
+
+
+        def opt_pulses(x, B, a, dim, state, istate):
+            """
+            The function to optimize
+            """
+            lP = len(x)/2
+            P = np.zeros(lP)
+            t = np.zeros(lP)
+            for i in range(lP):
+                P[i] = x[i]
+                t[i] = x[i+lP+1]
+
+            U = self.update_EvOp(P, t, B, a, dim)
+            fstate = U * istate
+            ov = fstate.overlap(state)
+            return ov * ov.dag()
+
+        def optimize(self):
+            """
+            Run the optimization
+            """
+            from scipy.optimize import minimize as mini
+            lP = len(Pulses.P)
+            x0 = np.zeros(2*lP)
+            for i in range(lP):
+                x0[i] = Pulses.P[i]
+                x0[i+lP+1] = Pulses.t[i]
+
+
+            res = mini(opt_pulses, x0=Pulses, args=(self.B, self.a, self.dim, self.state, self.istate))
+
 """
 Methods fro defining various Hamitonians and operations on the Hamiltonians based on QuTiP Qobj
 """
@@ -456,7 +648,7 @@ def get_HIntMat(n, odd=False, full=False):
             j = 2.*float(i) + jplus
             Hmat[i,i] = (2.*j + 1.)**(-1.) * ((j + 1.)**2./(2.*j + 3.) + j**2./(2.*j - 1.))
             if i != n-1:
-                Hmat[i,i+1] = (j + 1.) * (j + 2.) / ((2.*j + 1.) * (2.*j + 3.)) * math.sqrt((2*j + 1.) / (2.*j + 5.))
+                Hmat[i,i+1] = (j + 1.) * (j + 2.) / ((2.*j + 1.) * (2.*j + 3.)) * math.sqrt((2.*j + 1.) / (2.*j + 5.))
                 Hmat[i+1,i] = Hmat[i,i+1]
 
     return Hmat
@@ -472,7 +664,17 @@ def get_Hdip_Mat(n):
 
     return Hmat
 
-
+    
+# Getting the eigenenegies and initial state based on diagonalization of the field Hamiltonian
+def get_DipEigen(B, D, eps0, n):
+    """
+    Get the energies and the inti
+    """
+        
+    H0_dip = H0(B, n, full=True) + H_dip(eps0, D, n) # The field Hamiltonian
+            
+    [Eigva, Eigve] = H0_dip.eigenstates() # Diagonalize the Hamiltonian
+    return Eigva, Eigve
 
 # The static part of the interaction Hamiltonian
 # @descr: This part of the time dependent Hamiltonian will be multiplied with
@@ -570,7 +772,7 @@ def double_Gauss_me(t, args):
     return args['I01'] * math.exp(-(t - args['t0'])**2./(2.*args['sigma']**2.)) + args['I02'] * math.exp(-(t - args['tau'])**2./(2.*args['sigma']**2.))
 
 
-def Lorentz(x:float, x0:float, eps:float, gamma:float, offset:float) -> float:
+def Lorentz(x:float, x0:float, eps:float, gamma:float, offset=0.) -> float:
     """
     The Lorentzian profile
 
@@ -689,11 +891,88 @@ def UI(P, n, odd=False, full=False, mrep=False):
     U = H.expm()
     return U
 
+def UI_cossincos(P, n, odd=False, full=False):
+    
+    Hm = 1.j*P * get_cossincosm_Mat(n, odd, full)
+    H = Qobj(Hm)
+    U = H.expm()
+    return U
+
+def UI_cossinsin(P, n, odd=False, full=False):
+    
+    Hm = 1.j*P * get_cossinsinm_Mat(n, odd, full)
+    H = Qobj(Hm)
+    U = H.expm()
+    return U
+
+
+def UI_sin2cos2(P, n, odd=False, full=False):
+    
+    Hm = 1.j*P * 0.5 * (get_sin2diagm_Mat(n) + get_sin2cos2m_Mat(n))
+    H = Qobj(Hm)
+    U = H.expm()
+    return U
+
+
+def UI_sin2sin2(P, n, odd=False, full=False):
+    
+    Hm = 1.j*P * 0.5 * (get_sin2diagm_Mat(n) - get_sin2cos2m_Mat(n))
+    H = Qobj(Hm)
+    U = H.expm()
+    return U
+
+
+def UI_sin2sin2p(P, n, odd=False, full=False):
+    
+    Hm = 1.j*P * get_sin2sin2m_Mat(n)
+    H = Qobj(Hm)
+    U = H.expm()
+    return U
+
+
+def UI_EFNP(P:float, jmax:int, pol='z', alpha=0., beta=0., eps=0., D=0.):
+    """
+    The pulse propagation operator for minterferometry measurment of the local e-field with non-paralell pulses.
+    """
+    ca = math.cos(alpha)
+    cb = math.cos(beta)
+    if pol == 'z':
+        Hm = 1.j*P * (ca**2. * get_Hpolm_Mat(jmax, odd=False, full=True) - \
+                2.*ca*sa * get_cossincosm_Mat(jmax, odd=False, full=True) + \
+                sa**2. * 0.5*(get_sin2diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+    elif pol == 'x':
+        sa = math.sin(alpha)
+        sb = math.sin(beta)
+        Hm = 1.j*P * (sa**2.*cb**2. * get_Hpolm_Mat(jmax, odd=False, full=True) + \
+                2.*ca*sa*cb**2. * get_cossincosm_Mat(jmax, odd=False, full=True) - \
+                2.*sa*cb*sb * get_cossinsinm_Mat(jmax, odd=False, full=True) + \
+                ca**2.*cb**2. * (get_sin2_diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)) -\
+                2.*ca*cb*sb*0.5*get_sin2sin2m_Mat(jmax, odd=False, full=True) + \
+                sb**2. * 0.5*(get_sin2_diagm_Mat(jmax) - get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+
+    elif pol == 'y':
+        sa = math.sin(alpha)
+        sb = math.sin(beta)
+        Hm = 1.j*P * (sa**2.*sb**2. * get_Hpolm_Mat(jmax, odd=False, full=True) + \
+                2.*ca*sa*sb**2. * get_cossincosm_Mat(jmax, odd=False, full=True) + \
+                2.*sa*cb*sb * get_cossinsinm_Mat(jmax, odd=False, full=True) + \
+                ca**2.*sb**2. * (get_sin2_diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)) +\
+                2.*ca*cb*sb*0.5*get_sin2sin2m_Mat(jmax, odd=False, full=True) + \
+                cb**2. * 0.5*(get_sin2_diagm_Mat(jmax) - get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+
+        
+    He = 1.j*H_dipm(eps, D, jmax)
+    H = Qobj(Hm+He)
+    U = H.expm()
+    return U
+                
+
+
 # The free evolution operator
 def Uf(B, t, n, a=0., odd=False, full=False, mrep=False):
     if mrep:
         print(mrep)
-        H = -1.j*t*H0_m(B, n, a, odd, full)
+        H = -1.j*t*H0_m(B, n, a, odd, full=True)
     else:
         H = -1.j*t*H0(B, n, a, odd, full)
     U = H.expm()
@@ -1160,7 +1439,7 @@ def get_Hdipm_Mat(jmax:int):
             mf = float(m)
             i1 = index(j,m)
             i2 = index(j+1, m)
-            me = jp1(j, m) #math.sqrt((jf + mf + 1.) * (jf - mf + 1.)/((2.*jf + 3.) * (2.*jf + 1.)))
+            me = Gaunt_cos(j, j+1, m)    #jp1(j, m) #math.sqrt((jf + mf + 1.) * (jf - mf + 1.)/((2.*jf + 3.) * (2.*jf + 1.)))
             Hmat[i1, i2] = me
             Hmat[i2, i1] = me
 
@@ -1169,22 +1448,22 @@ def get_Hdipm_Mat(jmax:int):
 def get_Hsinexpplusm_Mat(jmax:int):
     """
     """
-
     Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
-    Hmat[0,1] = jm1mp1(1,-1)
-    Hmat[3,0] = jp1mp1(0,0)
-    for i in range(jmax+1):
-        Hmat[index(jmax, jmax-i), index(jmax-1, jmax-1-i)] = jp1mp1(jmax-1, jmax-1-i)
+    Hmat[0,1] = Gaunt_sin(0, 0, 1, -1) #jm1mp1(1,-1)
+    Hmat[3,0] = Gaunt_sin(1,1,0,0) #jp1mp1(0,0)
+    # The maximum j in the representaiton separately
+    for i in range(2*jmax-1):
+        Hmat[index(jmax, jmax-i), index(jmax-1, jmax-1-i)] = Gaunt_sin(jmax, jmax-i, jmax-1, jmax-1-i)    #p1mp1(jmax-1, jmax-1-i)
     for j in range(1, jmax):
         jf = float(j)
         for m in range(-j, j+1):
             mf = float(m)
             i1 = index(j,m)
             i2 = index(j+1,m-1)
-            Hmat[i1, i2] = jm1mp1(j+1, m-1)
+            Hmat[i1, i2] = Gaunt_sin(j, m, j+1, m-1) #jm1mp1(j+1, m-1)
             if (abs(m-1) <= j-1) and (j>1):
                 i3 = index(j-1,m-1)
-                Hmat[i1, i3] = jp1mp1(j-1, m-1)
+                Hmat[i1, i3] = Gaunt_sin(j,m,j-1,m-1) #jp1mp1(j-1, m-1)
     return Hmat
 
 
@@ -1193,20 +1472,20 @@ def get_Hsinexpminusm_Mat(jmax:int):
     """
 
     Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
-    Hmat[0,3] = jm1mm1(1,1)
-    Hmat[1,0] = jp1mm1(0,0)
-    for i in range(jmax+1):
-        Hmat[index(jmax, -(jmax-i)), index(jmax-1, -(jmax-1)+i)] = jp1mm1(jmax-1, -(jmax-1)+i)
+    Hmat[0,3] = Gaunt_sin(0,0,1,1) #jm1mm1(1,1)
+    Hmat[1,0] = Gaunt_sin(1,-1, 0, 0) #jp1mm1(0,0)
+    for i in range(2*jmax-1):
+        Hmat[index(jmax, -(jmax-i)), index(jmax-1, -(jmax-1)+i)] = Gaunt_sin(jmax, -(jmax-i), jmax-1, -(jmax-1)+i)  #jp1mm1(jmax-1, -(jmax-1)+i)
     for j in range(1, jmax):
         jf = float(j)
         for m in range(-j, j+1):
             mf = float(m)
             i1 = index(j,m)
             i2 = index(j+1,m+1)
-            Hmat[i1, i2] = jm1mm1(j+1, m+1)
-            #if (abs(m-1) <= j-1) and (j>1):
-            #    i3 = index(j-1,m-1)
-            #    Hmat[i1, i3] = -jp1mp1(j-1, m-1)
+            Hmat[i1, i2] = Gaunt_sin(j+1, m+1, j, m) #jm1mm1(j+1, m+1)
+            if (abs(m+1) <= j-1) and (j>1):
+                i3 = index(j-1,m+1)
+                Hmat[i1, i3] = Gaunt_sin(j,m,j-1,m+1) #-jp1mp1(j-1, m-1)
 
 
     return Hmat
@@ -1225,35 +1504,30 @@ def get_Hsinsinm_Mat(jmax:int):
 
     return Hmat
 
-def get_cossinexpminusm_Mat(jmax:int):
+def get_cossinexpplusm_Mat(jmax:int):
     """
     """
     if jmax >= 2:
         Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
         # Take care of the j=0,1 states separately
-        Hmat[0, 7] = jm1(1,0) * jm1mm1(2,1)
-        print(jm1mm1(2,0) * jp1(1,0))
-        print(jm1mm1(2,1) * jp1(1,1))
+        Hmat[0, 5] = Gaunt_cossin(0,0,2,-1) #jm1(1,0) * jm1mm1(2,1)
 
         for j in range(1, jmax+1):
-            print(j)
             jf = float(j)
-            for m in range(-j, j):
+            for m in range(-j, j+1):
                 mf = float(m)
                 i1 = index(j,m)
                 #f m != j:
-                i2 = index(j,m+1)
-                Hmat[i1, i2] = jm1mm1(j+1, m+1) * jp1(j,m+1)
-                print("1", j,m, i1, i2)
+                i2 = index(j,m-1)
+                if (m > -j) or (j < jmax):
+                    Hmat[i1, i2] = Gaunt_cossin(j,m,j,m-1) #jm1mm1(j+1, m+1) * jp1(j,m+1)
                 if j+2 <= jmax:
-                    i3 = index(j+2, m+1)
-                    Hmat[i1, i3] = jm1(j+1, m) * jm1mm1(j+2, m+1)
-                    print("2", j, m, i1, i3)
+                    i3 = index(j+2, m-1)
+                    Hmat[i1, i3] = Gaunt_cossin(j,m,j+2,m-1) #jm1(j+1, m) * jm1mm1(j+2, m+1)
                 #if (j >= 2) and (m != -j):
-                if (j >= 2) and (abs(m+1) <= j-2):
-                    i4 = index(j-2, m+1)
-                    Hmat[i1, i4] = jp1(j-1, m) * jp1mm1(j-2, m+1)
-                    print("3", j, m, i1, i4)
+                if (j >= 2) and (abs(m-1) <= j-2):
+                    i4 = index(j-2, m-1)
+                    Hmat[i1, i4] = Gaunt_cossin(j,m,j-2,m-1) #jp1(j-1, m) * jp1mm1(j-2, m+1)
 
     
         return Hmat
@@ -1262,35 +1536,202 @@ def get_cossinexpminusm_Mat(jmax:int):
 
 
 
-def get_cossincos_m_Mat(jmax:int):
+def get_cossinexpminusm_Mat(jmax:int):
     """
     """
-    from numpy import matmul
+    if jmax >= 2:
+        Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
+        # Take care of the j=0,1 states separately
+        Hmat[0, 7] = Gaunt_cossin(0,0,2,1) #jm1(1,0) * jm1mm1(2,1)
 
-    Hmat = matmul(get_Hdipm_Mat(jmax), get_Hsincosm_Mat(jmax))
-    i1 = index(jmax, jmax)
-    i2 = index(jmax, jmax-1)
-    i3 = index(jmax, -jmax)
-    i4 = index(jmax, -jmax + 1)
-    Hmat[i1, i2] = jm1(jmax, jmax-1) * jp1mp1(jmax-1, jmax-1)
-    Hmat[i3, i4] = jm1(jmax, -jmax+1) * jp1mm1(jmax-1, -jmax+1)
-    # WARNING NEED TO CORRECT THE MATRIX ELEMENTS BELONINGING TO JMAX
-    print("WARNING, MATRIX ELEMENTS FOR JMAX ARE NOT CORRECT!!")
+        for j in range(1, jmax+1):
+            jf = float(j)
+            for m in range(-j, j+1):
+                mf = float(m)
+                i1 = index(j,m)
+                #f m != j:
+                i2 = index(j,m+1)
+                if (m < j) or (j < jmax):
+                    Hmat[i1, i2] = Gaunt_cossin(j,m,j,m+1) #jm1mm1(j+1, m+1) * jp1(j,m+1)
+                if j+2 <= jmax:
+                    i3 = index(j+2, m+1)
+                    Hmat[i1, i3] = Gaunt_cossin(j,m,j+2,m+1) #jm1(j+1, m) * jm1mm1(j+2, m+1)
+                #if (j >= 2) and (m != -j):
+                if (j >= 2) and (abs(m+1) <= j-2):
+                    i4 = index(j-2, m+1)
+                    Hmat[i1, i4] = Gaunt_cossin(j,m,j-2,m+1) #jp1(j-1, m) * jp1mm1(j-2, m+1)
+
+    
+        return Hmat
+    else:
+        raise ValueError("Need jmax at least two")
+
+
+
+def get_cossincosm_Mat(jmax:int):
+    """
+    """
+    Hmat = 0.5 * (get_cossinexpplusm_Mat(jmax) + get_cossinexpminusm_Mat(jmax))
 
     return Hmat
- 
-def get_cossinsin_m_Mat(jmax:int):
+
+
+def get_cossinsinm_Mat(jmax:int):
     """
     """
-    from numpy import matmul
-
-    Hmat = matmul(get_Hdipm_Mat(jmax), get_Hsinsinm_Mat(jmax))
-
-    # WARNING NEED TO CORRECT THE MATRIX ELEMENTS BELONINGING TO JMAX
-    print("WARNING, MATRIX ELEMENTS FOR JMAX ARE NOT CORRECT!!")
+    Hmat = -0.5j * (get_cossinexpplusm_Mat(jmax) - get_cossinexpminusm_Mat(jmax))
 
     return Hmat
+
+
+def get_sin2m_Mat(jmax:int):
+    """
+    """
+    if jmax >= 2:
+        Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
+        # Take care of the j=0,1 states separately
+        Hmat[0, 0] = Gaunt_sin2(0,0,0,0) 
+        Hmat[0, 4] = Gaunt_sin2(0,0,2,-2) 
+        Hmat[0, 8] = Gaunt_sin2(0,0,2,2) 
+        Hmat[1, 1] = Gaunt_sin2(1,-1,1,-1) 
+        Hmat[2, 2] = Gaunt_sin2(1,0,1,0) 
+        Hmat[3, 3] = Gaunt_sin2(1,1,1,1) 
+        Hmat[1, 3] = Gaunt_sin2(1,-1, 1,1)
+        Hmat[3, 1]  = Hmat[1,3]
+        if jmax > 2:
+            Hmat[1,9] = Gaunt_sin2(1,-1, 3,-3)
+            Hmat[1,13] = Gaunt_sin2(1,-1, 3,1)
+            Hmat[2,10] = Gaunt_sin2(1,0, 3,-2)
+            Hmat[2,14] = Gaunt_sin2(1,0, 3,2)
+            Hmat[3,11] = Gaunt_sin2(1,1, 3,-1)
+            Hmat[3,15] = Gaunt_sin2(1,1, 3,3)
+
+        for j in range(2, jmax+1):
+            for m in range(-j, j+1):
+                i1 = index(j,m)
+                Hmat[i1,i1] = Gaunt_sin2(j,m,j,m)
+                if m < j - 1:
+                    i2 = index(j, m+2)
+                    Hmat[i1,i2] = Gaunt_sin2(j,m,j,m+2)
+                if m > -j + 1:
+                    i3 = index(j, m-2)
+                    Hmat[i1,i3] = Gaunt_sin2(j,m,j,m-2)
+                if j < jmax - 1:
+                    i4 = index(j+2,m+2)
+                    Hmat[i1, i4] = Gaunt_sin2(j,m,j+2,m+2)
+                    i5 = index(j+2,m-2)
+                    Hmat[i1, i5] = Gaunt_sin2(j,m,j+2,m-2)
+                if m < jmax - 1:
+                    i6 = index(j-2, m+2)
+                    Hmat[i1, i6] = Gaunt_sin2(j,m,j-2,m+2)
+                if m > -jmax + 1:
+                    i7 = index(j-2, m-2)
+                    Hmat[i1, i7] = Gaunt_sin2(j,m,j-2,m-2)
+
+        return Hmat
+    else:
+        raise ValueError("Need jmax at least 2")    
+
+
+def get_sin2diagm_Mat(jmax:int):
+    """
+    """
+    if jmax >= 2:
+        Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
+        # Take care of the j=0,1 states separately
+        Hmat[0, 0] = Gaunt_sin2(0,0,0,0) 
+        Hmat[1, 1] = Gaunt_sin2(1,-1,1,-1) 
+        Hmat[2, 2] = Gaunt_sin2(1,0,1,0) 
+        Hmat[3, 3] = Gaunt_sin2(1,1,1,1) 
+        if jmax > 2:
+
+            for j in range(2, jmax+1):
+                for m in range(-j, j+1):
+                    i1 = index(j,m)
+                    Hmat[i1,i1] = Gaunt_sin2(j,m,j,m)
+
+        return Hmat
+    else:
+        raise ValueError("Need jmax at least 2")    
+
+
+def get_sin2exp2plusm_Mat(jmax:int):
+    """
+    """
+    if jmax >= 2:
+        Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
+        # Take care of the j=0,1 states separately
+        Hmat[0, 4] = Gaunt_sin2(0,0,2,-2) 
+        Hmat[3, 1] = Gaunt_sin2(1,1, 1,-1)
+        if jmax > 2:
+            Hmat[1,9] = Gaunt_sin2(1,-1, 3,-3)
+            Hmat[2,10] = Gaunt_sin2(1,0, 3,-2)
+            Hmat[3,11] = Gaunt_sin2(1,1, 3,-1)
+
+        for j in range(2, jmax+1):
+            for m in range(-j, j+1):
+                i1 = index(j,m)
+                if m > -j + 1:
+                    i2 = index(j, m-2)
+                    Hmat[i1,i2] = Gaunt_sin2(j,m,j,m-2)
+                if j < jmax - 1:
+                    i3 = index(j+2,m-2)
+                    Hmat[i1, i3] = Gaunt_sin2(j,m,j+2,m-2)
+                if m > -jmax + 1:
+                    i4 = index(j-2, m-2)
+                    Hmat[i1, i4] = Gaunt_sin2(j,m,j-2,m-2)
+
+        return Hmat
+    else:
+        raise ValueError("Need jmax at least 2")    
+
+
+def get_sin2exp2minusm_Mat(jmax:int):
+    """
+    """
+    if jmax >= 2:
+        Hmat = np.zeros(((jmax + 1)**2, (jmax + 1)**2))
+        # Take care of the j=0,1 states separately
+        Hmat[0, 8] = Gaunt_sin2(0,0,2,2) 
+        Hmat[1, 3] = Gaunt_sin2(1,-1, 1,1)
+        if jmax > 2:
+            Hmat[1,13] = Gaunt_sin2(1,-1, 3,1)
+            Hmat[2,14] = Gaunt_sin2(1,0, 3,2)
+            Hmat[3,15] = Gaunt_sin2(1,1, 3,3)
+
+        for j in range(2, jmax+1):
+            for m in range(-j, j+1):
+                i1 = index(j,m)
+                if m < j - 1:
+                    i2 = index(j, m+2)
+                    Hmat[i1,i2] = Gaunt_sin2(j,m,j,m+2)
+                if j < jmax - 1:
+                    i3 = index(j+2,m+2)
+                    Hmat[i1, i3] = Gaunt_sin2(j,m,j+2,m+2)
+                if m < jmax - 1:
+                    i4 = index(j-2, m+2)
+                    Hmat[i1, i4] = Gaunt_sin2(j,m,j-2,m+2)
+
+        return Hmat
+    else:
+        raise ValueError("Need jmax at least 2")    
+
+def get_sin2cos2m_Mat(jmax:int):
+    """
+    """
+    Mat = 0.5 * (get_sin2exp2plusm_Mat(jmax) + get_sin2exp2minusm_Mat(jmax))
+
+    return Mat
+
+
+def get_sin2sin2m_Mat(jmax:int):
+    """
+    """
+    Mat = -0.5j * (get_sin2exp2plusm_Mat(jmax) - get_sin2exp2minusm_Mat(jmax))
+
+    return Mat
  
+
 def H2_m(D:float, jmax:int):
     """
     The dipole Hamiltonian/eps for $m=0$
@@ -1351,19 +1792,146 @@ def get_Hpolm_Mat(jmax:int, odd=False, full=True):
 
     return Hmat
 
-def H1_m(Da, jmax, odd=False, full=True):
+def H1_m(Da, jmax, odd=False, full=True, theta=0.):
     """
     The polarizability anisotropy Hamiltonian for $m=0$
     """
-    Hm = get_Hpolm_Mat(jmax, odd, full)
+    Hm = math.cos(theta)**(2.) * get_Hpolm_Mat(jmax, odd, full, theta)
     H = Qobj(Hm)
     return -0.25*Da*H
 
 # The static part of the interaction Hamiltonian when using the intensity rather than the electric field
-def H1_I0_m(Da:float, jmax:int, odd=False, full=True):
+def H1_I0_m(Da:float, jmax:int, odd=False, full=True, theta=0.):
     from parameters import eps0, c
-    Hm = get_Hpolm_Mat(jmax, odd, full)
+    Hm = math.cos(theta)**(2.) * get_Hpolm_Mat(jmax, odd, full)
     H = Qobj(Hm)
     return -Da / (2.*eps0*c) * H
 
+def H3_m(D:float, jmax:int, theta=0., phi=0.):
+    """
+    The dipole Hamiltonian/eps for $m=0$
+    Args:
+    -----
+        D: float
+            The dipole moment
+        jmax: int
+            The maximum j for the representation
 
+    Returns:
+    --------
+        H: Qobj
+            The dipole Hamiltonian excluding the electric field
+    """
+
+    Hm = math.sin(theta) * math.cos(phi) * get_Hsincosm_Mat(jmax)
+    H = Qobj(Hm)
+    
+    return -D*H
+
+
+def H4_m(D:float, jmax:int, theta=0., phi=0.):
+    """
+    The dipole Hamiltonian/eps for $m=0$
+    Args:
+    -----
+        D: float
+            The dipole moment
+        jmax: int
+            The maximum j for the representation
+
+    Returns:
+    --------
+        H: Qobj
+            The dipole Hamiltonian excluding the electric field
+    """
+
+    Hm = math.sint(theta) * math.sin(phi) * get_Hsinsinm_Mat(jmax)
+    H = Qobj(Hm)
+    
+    return -D*H
+
+"""
+Analytical things related to the impact approximation
+"""
+
+def get_MatrixParams(odd=False):
+    """
+    Decr.
+    Args:
+    -----
+        odd: boolean
+            Whether or not to use odd states (j=1,3). Default false, i.e. we use even states (j=0,2)
+    """
+    if not odd:
+        a, b, d = 3.**(-1.), 2.*3.**(-1.)*math.sqrt(5.)**(-1.), 11.*21.**(-1.)
+    else:
+        a, b, d = 3.*5.**(-1.), 2.*5.**(-1.)*math.sqrt(3./7.), 23.*45.**(-1.)
+
+    summ = a + d
+    diff = a - d
+    D    = diff**2. + 4.*b**2.
+    nu_p = summ + math.sqrt(D)
+    nu_m = summ - math.sqrt(D)
+    a_p  = a - 0.5 * nu_p
+    n_p  = math.sqrt(a_p**2. + b**2.)
+
+    return b, nu_p, nu_m, a_p, n_p
+             
+
+def MatrixElementsPulseImpact2D(P=0., odd=False):
+    """
+    Obtaining the matrix elements of the Pulse evolution operator in the 2D impact approximation
+    Args:
+    -----
+        P: float
+           Pulse fluence 
+        Odd: boolean
+             Whether or not to use odd states (j=1,3). Default false, i.e. we use even states (j=0,2)
+    """
+    import cmath
+
+    b, nu_p, nu_m, a_p, n_p = get_MatrixParams(odd)
+
+    A = (a_p**2. *  cmath.exp(1.j*0.5*P*nu_m) + b**2. * cmath.exp(1.j*0.5*P*nu_p)) * n_p**(-2.)
+    B = a_p*b * (cmath.exp(1.j*0.5*P*nu_m) - cmath.exp(1.j*0.5*P*nu_p)) * n_p**(-2.)
+    D = (b**2. *  cmath.exp(1.j*0.5*P*nu_m) + a_p**2. * cmath.exp(1.j*0.5*P*nu_p)) * n_p**(-2.)
+
+    return A, B, D
+
+
+def EigenField2D(B:float, D:float, eps0:float):
+    """
+    Obtaining the eigenenergies in of the dipole interaction in a 2-level model
+    """
+
+    V   = D * eps0 * math.sqrt(3.)**(-1.)
+    l_m = B - math.sqrt(B**2. + V**2.)
+    l_p = B + math.sqrt(B**2. + V**2.)
+
+    return l_m, l_p, V
+
+
+"""
+Some fitting methods
+"""
+
+def least_square_fitting(data_to_fit, reference_data):
+    """
+    Finds the least square error of data_to_fit compared to referemce_data
+
+    Args:
+    -----
+        data_to_fit: array of floats
+            data to be fitted to reference data
+
+        reference_data: array of floats
+            the reference data
+    """
+
+    # Check that both arrays are of the same lengh
+    if len(data_to_fit) == len(reference_data):
+        #sq_err = np.dot(data_to_fit - reference_data, data_to_fit - reference_data)
+        sq_err = np.mean((data_to_fit - reference_data)**2.)
+        return sq_err
+    else:
+        raise ValueError
