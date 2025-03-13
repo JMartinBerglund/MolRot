@@ -9,11 +9,13 @@ import sys
 sys.path.append("/home/martin/Work/GitHub/MolRot/Tomography/")
 sys.path.append("/home/martin/Work/GitHub/MolRot/Interferometry/")
 sys.path.append("/home/martin/Work/GitHub/MolRot/Utility/")
+sys.path.append("/home/martin/Work/GitHub/MolRot/StateCreation/")
 import Interferometry
 import Data
 import Opt
 import Utility
 import Tomography
+import StateCreation
 
 print("This is MolRot")
 print("Running on python version:")
