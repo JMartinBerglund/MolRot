@@ -19,7 +19,7 @@ I0_SI     = Hartree2J / (Bohr2m**2. * atime2s) # I0 to SI units
 """
 Systems of molecular ions
 """
-def set_MolParams(Molecule):
+def set_MolParams(Molecule, **kwargs):
     """
     Retruns a dictionary of molecular paramters
     """
@@ -29,9 +29,20 @@ def set_MolParams(Molecule):
         Mol  = {'B': 2.15*10**(-5.), 'Da': 16.59, 'D': 2.38, 'Mol': 'CaH+'}
     elif Molecule == 'CaD+':
         Mol  = {'B': 1.10*10**(-5.), 'Da': 16.59, 'D': 2.38, 'Mol': 'CaD+'}
+    elif Molecule == 'Custom':
+        Mol = kwargs
+        Mol.update({'Mol': 'Custom'})
     else:
         print("Warning molecular system {} not found in list, returning empty dictionary".format(Molecule))
         Mol = {}
+
+    return Mol
+
+def update_MolParams(Molecule, **kwargs):
+    """
+    Updates the dictionary Molecule with the values in kwargs
+    """
+    Mol = Molecule.update(kwargs)
 
     return Mol
 
