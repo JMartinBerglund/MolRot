@@ -9,7 +9,7 @@ import math
 class TestMethods(unittest.TestCase): 
     # negative test function to test if values are almost equal with place 
     omega_max = 10.
-    domega    = 0.05.
+    domega    = 0.05
     tau_max   = 20.
     dtau      = 2.
     name = "TestMethods"
