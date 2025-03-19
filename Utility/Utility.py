@@ -51,7 +51,7 @@ class ImpactPulses(Pulses):
     # name: Name given to the pulses 
     def __init__(self, P, t, name=None):
         """Init method for the impact pulses"""
-        super().__init__(P, t, Ptype="impact", name=Name)
+        super().__init__(P, t, Ptype="impact", name=name)
 
 
 
@@ -374,7 +374,7 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
             UHold = Up * Ufree * UHold
         self.U = UHold
 
-    def update_full_operators(self, P=0., Pind=None, time=0., tind=None):
+    def update_full_operators(self, P=[0.], Pind=None, time=[0.], tind=None):
         """Method for updating the pulse strengths and delay times of the full impact evolution operator"""
         icont = 0
         jcont = 0
