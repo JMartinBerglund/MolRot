@@ -58,8 +58,60 @@ class StateCreation():
                     print("Number of pulses and time delays must be the same. Got {} pulses and {} time delays".format(len(Pulsepara['Ps']), len(Pulsepara['taus'])))
             except KeyError as e:
                 raise Exception(e)
+        elif approximation == "none":
+            try:
+                if len(Pulsepara['I0s']) == len(Pulsepara['taus']):
+                    self.I0s   = Pulsepara['I0s']
+                    self.taus  = Pulsepara['taus']
+                    self.sigma = Pulsepara['sigma']
+                else:
+                    print("Number of pulses and time delays must be the same. Got {} pulses and {} time delays".format(len(Pulsepara['Ps']), len(Pulsepara['taus'])))
+            except KeyError as e:
+                raise Exception(e)
         else:
-            print("Implement full pulse initialization!!!")
+            print("{} approximation provided is unknown!!".format(approximation))
+
+
+    def print_info(self):
+        """
+        Print information about the instance of StateCreation
+        """
+        pass
+
+class StateCreationFullPulse(StateCreation):
+    """
+    Class for state creation using the full fiields (without impact approximation).
+    """
+
+    def __init__(self, Molecule:str, Pulsepara:dict, istate, goal_state, Name;str=None, measure="overlap") -> None:
+        """
+        """
+        super().__init__(Molecule, Pulsepara, istate, goal_state, Name, approximation="", measure=measure)
+
+
+    def P_from_I0_sigma(self):
+        """
+        Get the Pulse fluence from I0 and sigma
+        """
+        from parameters import P_from_I0_sigma as PI0s
+
+        Ps = np.zeros(len(self.I0s))
+        for I0 in self.I0s:
+            Ps[i] = PI0s(self.I0, self.Molpara['Da'], self.sigma)
+        return Ps
+            
+
+
+
+
+class StateCreationImpact(StateCreation):
+    """
+    """
+
+    def __init__(self, Molecule:str, Pulsepara:dict, istate, goal_state, Name:str=None, measure="overlap") -> None:
+        """
+        """
+        super().__init__(Molecule, Pulsepara, istate, goal_state, Name, approximation="impact", measure=measure)
 
 
     def set_operators(self):
@@ -68,6 +120,7 @@ class StateCreation():
         Pulses = IP(self.Ps, self.taus)
         self.EOS = EOs(Pulses, self.Molecule['B'], self.dim)
 
+    
     def update_operators(self, Ps=None, taus=None):
         from Utility import EvolutionOperators as EOs
         from Utility import ImpactPulses as IP
@@ -82,8 +135,6 @@ class StateCreation():
 
         Pulses = IP(Ps_new, taus_new)
         self.EOS = EOs(Pulses, self.Molecule['B'], self.dim)
-
-
 
 
     @staticmethod
@@ -111,11 +162,13 @@ class StateCreation():
         l1 = abs(1. - abs(ov))**2.                    # Error function
         return l1 + l2 
 
+
     def run_sequence(self):
 
         fstate = self.EOS.U * self.istate
         return fstate
 
+    
     def optimize_pulse_sequence(self):
         """
         """
@@ -129,9 +182,10 @@ class StateCreation():
             #self.run_optimize_impact()
         else:
             print("Unknown approximation {]".format(self.appr))
+ 
 
 
-class StateCreation2D(StateCreation):
+class StateCreation2D(StateCreation, StateCreationImpact):
     """
     State cration in a 2-level basis (|j=0,m=0> and |j=2,m=0>)
     """
@@ -142,10 +196,9 @@ class StateCreation2D(StateCreation):
         # Check that istate and goal_state are Qobj, either density matrices or kets and 2-level
         if ((istate.type == 'ket') and (goal_state.type == 'ket') or (istate.type == 'oper') and (goal_state.type == 'oper')):
             if ((istate.type == 'ket') and (istate.dims[0][0] == 2) or (istate.type == 'oper') and (istate.dims[0][0] == 2) and (istate.dims[1][1] == 2)):
-                super().__init__(Molecule, Pulsepara, istate, goal_state, "2-level", approximation)
+                StateCreation.__init__(Molecule, Pulsepara, istate, goal_state, "2-level", approximation)
         else:
             raise Exception
-
 
 
 
