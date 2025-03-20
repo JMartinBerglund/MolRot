@@ -16,6 +16,35 @@ atime2s   = 2.4188843e-17 # atomic ime to second
 I0_SI     = Hartree2J / (Bohr2m**2. * atime2s) # I0 to SI units 
 
 
+
+"""
+Pulse parameters
+"""
+
+def P_from_I0_sigma(I0, Dalpha, sigma):
+    """
+    Returns the integrated pulse strength from the maximum pulse intenstiy, polarizability anisotropy and    sigma
+    """
+    P = math.sqrt(0.5*math.pi) * Dalpha * eps0**(-1.) * c**(-1.) * I0 * sigma
+    return P
+
+
+def I0_from_P_sigma(P, Dalpha, sigma):
+    """
+    Returns the maximum pulse intensity from the integrated pulse strength, the polarizability anisotropy    and sigma
+    """
+    I0 = P * eps0 * c / (math.sqrt(0.5*math.pi) * Dalpha * sigma)
+    return I0
+
+
+def sigma_from_P_I0(P, Dalpha, I0):
+    """
+    Returns sigma from the maximum pulse intensity, the integrated pulse strength and the polarizability     anisotropy
+    """
+    sigma = P * eps0 * c / (math.sqrt(0.5*math.pi) * Dalpha * I0)
+    return sigma
+
+
 """
 Systems of molecular ions
 """
