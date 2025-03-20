@@ -83,7 +83,7 @@ class StateCreationFullPulse(StateCreation):
     Class for state creation using the full fiields (without impact approximation).
     """
 
-    def __init__(self, Molecule:str, Pulsepara:dict, istate, goal_state, Name;str=None, measure="overlap") -> None:
+    def __init__(self, Molecule:str, Pulsepara:dict, istate, goal_state, Name:str=None, measure="overlap") -> None:
         """
         """
         super().__init__(Molecule, Pulsepara, istate, goal_state, Name, approximation="", measure=measure)
@@ -100,7 +100,6 @@ class StateCreationFullPulse(StateCreation):
             Ps[i] = PI0s(self.I0, self.Molpara['Da'], self.sigma)
         return Ps
             
-
 
 
 
@@ -185,7 +184,7 @@ class StateCreationImpact(StateCreation):
  
 
 
-class StateCreation2D(StateCreation, StateCreationImpact):
+class StateCreation2D(StateCreationImpact):
     """
     State cration in a 2-level basis (|j=0,m=0> and |j=2,m=0>)
     """
@@ -196,7 +195,7 @@ class StateCreation2D(StateCreation, StateCreationImpact):
         # Check that istate and goal_state are Qobj, either density matrices or kets and 2-level
         if ((istate.type == 'ket') and (goal_state.type == 'ket') or (istate.type == 'oper') and (goal_state.type == 'oper')):
             if ((istate.type == 'ket') and (istate.dims[0][0] == 2) or (istate.type == 'oper') and (istate.dims[0][0] == 2) and (istate.dims[1][1] == 2)):
-                StateCreation.__init__(Molecule, Pulsepara, istate, goal_state, "2-level", approximation)
+                super().__init__(Molecule, Pulsepara, istate, goal_state, "2-level", approximation)
         else:
             raise Exception
 
