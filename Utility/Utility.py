@@ -10,17 +10,47 @@ import math
 class Pulses():
     """Class for representing pulses with time delay."""
 
-    def __init__(self, P, t, Ptype="impulse", name=None):
+    def __init__(self, Pulsepara, Ptype, name=None):
         """ """
+        import warnings
 
         try:
-            self.P     = P
-            self.t     = t
-            self.nP    = len(P)
-            self.Ptype = Ptype
-            self.name  = name
-        except len(P) != len(t):
-            raise Exception("Number of pulses and time delays must match. Got", len(P), "pulses and", len(t), "delays!" )
+            if Ptype == "impulse":
+                self.Ps = Pulsepara['Ps']
+                self.nP = len(Pulsepara['Ps'])
+            elif Ptype == "Gauss":
+                self.I0s   = Pulsepara['I0s']
+                self.sigma = Pulsepara['sigma']
+                self.nP = len(Pulsepara['I0s'])
+                if not self.diff_is_positive(Pulsepara['taus'][0], Pulsepara['timegrid'][0], Pulsepara['sigma']):
+                    warnings.warn("The first timedelay is closer than 3\sigma to the lower edge of the timegrid, this could lead to numerical inaccuracies!!")
+                if not self.diff_is_positive(Pulsepara['timegrid'][-1], Pulsepara['taus'][-1], Pulsepara['sigma']):
+                    warnings.warn("The last timedelay is closer than 3\sigma to the upper edge of the timegrid, this could lead to numerical inaccuracies!!")
+            else:
+                raise TypeError("Got an unknown pulsetype {}".format(Ptype))
+            self.taus = Pulsepara['taus']
+            self.nt   = len(Pulsepara['taus'])
+            if ('alpha' in Pulsepara) and ('beta' in Pulsepara):
+                self.alpha = Pulsepara['alpha']
+                self.beta = Pulsepara['beta']
+            else:
+                self.alpha = None
+                self.beta = None
+            if 'pol' in Pulsepara:
+                self.pol = Pulsepara['pol']
+            else:
+                self.pol = None
+            self.Ptype  = Ptype
+            self.name   = name
+        except ValueError as ve:
+            print("ValueError: {}".format(ve))
+            #self.print_ve(ve)
+        except TypeError as te:
+            print("TypeError: {}".format(te))
+            #self.print_te(te)
+        except Exception as e:
+            print("Exception: {}".format(e))
+            #self.print_error(e)
 
 
     def copy_pulse(self):
@@ -37,11 +67,52 @@ class Pulses():
             print("Pulse info for nameless pulse")
         print("Pulse type:", self.Ptype)
         if self.Ptype == "impulse":
-            print("Number of pulses:", len(self.P))
+            print("Number of pulses:", len(self.Ps))
             print("Pulse strengths and delays:")
             for i in range(self.nP):
-                    print("Pulse", i, "P:", self.P[i], "delay:",self.t[i])
+                    print("Pulse", i, "P:", self.Ps[i], "delay:",self.taus[i])
 
+
+    def is_equal(self, n1:int, n2:int) -> bool:
+        if n1 == n2:
+            return True
+        else:
+            return False
+
+    def is_monotonically_positive(self, grid):
+        if all(grid[i] < grid[i+1] for i in range(len(grid) - 1)):
+            return True
+        else:
+            return False
+
+
+    def is_positive(self, a:float):
+        if a < 0.:
+            return False
+        else:
+            return True
+
+    def diff_is_positive(self, a:float|int, b:float|int, c:float|int):
+        if a - (b + 3.*c):
+            return True
+        else:
+            return False
+
+
+    @staticmethod
+    def print_error(e):
+        print("Exception raised: {}".format(e))
+
+    @staticmethod
+    def print_value_error(ve):
+        print("ValueError raised: {}".format(ve))
+    
+    @staticmethod
+    def print_type_error(te):
+        print("TypeError raised: {}".format(te))
+
+    def __del__(self):
+        print("Del")
 
 class ImpactPulses(Pulses):
     """Class for representing pulses in the impact approximation"""
@@ -49,9 +120,307 @@ class ImpactPulses(Pulses):
     # P:    Pulse strengths
     # t:    Pulse delays
     # name: Name given to the pulses 
-    def __init__(self, P, t, name=None):
+    #def __init__(self, P, t, angles=None, name=None):
+    def __init__(self, Pulsepara, name=None):
         """Init method for the impact pulses"""
-        super().__init__(P, t, Ptype="impact", name=name)
+        try:
+            self.checkPulsepara(Pulsepara)
+            #super().__init__(P, t, angles, Ptype="impulse", name=name)
+            super().__init__(Pulsepara, Ptype="impulse", name=name)
+        except ValueError as ve:
+            self.print_value_error(ve)
+            del self
+        except TypeError as te:
+            self.print_type_error(te)
+            del self
+        except Exception as e:
+            self.print_error(e)
+            del self
+            
+
+    def checkPulsepara(self, para:dict):
+        #if self.is_equal(len(para['Ps']), len(para['taus'])) is False:
+        #    raise ValueError("There should be the same number of timedelays as pulses, got {} pulses and {} timedelays".format(para['Ps'], para['taus']))
+        for i in range(len(para['Ps'])):
+            if not isinstance(para['Ps'][i], float):
+                raise TypeError("Expect that all pulses be reals. Pulse {} has type {}".format(i+1, type(para['Ps'][i])))
+            if not self.is_positive(para['Ps'][i]):
+                raise ValueError("Expect that all pulses have positive fluence. Pulse {} has value {}".format(i+1, para['Ps'][i]))
+        if 'alpha' in para:
+            if self.is_equal(len(para['Ps']), len(para['alpha'])) is False:
+                raise ValueError("Expect same nr. of angles as pulses, got {} angles and {} pulses".format(len(para['alpha']), len(para['Ps'])))
+            if 'beta' not in para:
+                raise TypeError("If alpha is given, then beta must also be given. beta missing from Pulsepara")
+            if self.is_equal(len(para['alpha']), len(para['beta'])) is False:
+                raise ValueError("Expect same nr. of polar angles as azimuthal angles, got {} polar angles and {} azimuthal angles".format(len(para['alpha']), len(para['beta'])))
+            for i in range(len(para['alpha'])):
+                if not isinstance(para['alpha'][i], float):
+                    raise TypeError("Expect that all angles be reals. Polar angle {} has type {}".format(i+1, type(para['alpha'][i])))
+                if not isinstance(para['beta'][i], float):
+                    raise TypeError("Expect that all angles be reals. Azimuthal angle {} has type {}".format(i+1, type(para['beta'][i])))
+                if not 0. <= para['alpha'][i] <= math.pi:
+                    raise ValueError("ValueError for alpha. Expected a value in [0, \pi], but got {} \pi".format(para['alpha'][i]/math.pi))
+                if not 0. <= para['beta'][i] <= 2.*math.pi:
+                    raise ValueError("ValueError for beta. Expected a value in [0, 2\pi], but got {} \pi".format(para['beta'][i]/math.pi))
+        for i in range(len(para['taus'])):
+            if not isinstance(para['taus'][i], float):
+                raise TypeError("Expect that all pulse delays be reals. Pulse delay {} has type {}".format(i+1, type(para['taus'][i])))
+            if not self.is_positive(para['taus'][i]):
+                raise ValueError("Expect that all pulse delays be psoitive. Pulse delay {} has value {}".format(i+1, para['taus'][i]))
+
+        if self.is_monotonically_positive(para['taus']) is False:
+            raise ValueError("The time delays are not monotonically increasing as they should be")
+
+    def print_info(self):
+        """ """
+
+        if self.name is not None:
+            print("Pulse info for:", self.name)
+        else:
+            print("Pulse info for nameless pulse")
+        print("Pulse type:", self.Ptype)
+        print("Number of pulses: {}".format(self.nP))
+        print()
+        print("Pulse parameters:")
+        print("---------------------------")
+        for i in range(self.nP):
+            if self.pol is None:
+                if self.alpha is None:
+                    print("Pulse {}: P = {}".format(i+1, self.Ps[i]))
+                else:
+                    print("Pulse {}: P = {},  alpha = {}, beta = {}".format(i+1, self.Ps[i], self.alpha[i], self.beta[i]))
+            else:
+                print("Pulse {}: P = {}, alpha = {}, beta = {}, pol = {}".format(i+1, self.Ps[i], self.alpha[i], self.beta[i], self.pol[i]))
+        print()
+        print("Pulse delays:")
+        print("-------------")
+        print("tau_min: {}, tau_max: {}, number of delays: {}, dtau: {}".format(self.taus[0], self.taus[-1], len(self.taus), self.taus[1] - self.taus[0]))
+        print()
+
+
+
+class GaussPulses(Pulses):
+    """
+    Class for representing Gaussian pulses with time delays, polar angles and polarization vectors
+    """
+
+    def __init__(self, Pulsepara:dict, name=None):
+        """ 
+        The generator for the class
+        """
+
+        try:
+            # Check that the Pulsepara-file has consistent entries
+            self.checkPulsepara(Pulsepara)
+            # Call super init to initialize the basics
+            super().__init__(Pulsepara, "Gauss", name=name)
+            # Set the timegrid
+            self.set_timegrid(Pulsepara['timegrid'])
+        except ValueError as ve:
+            self.print_value_error(ve)
+            del self
+        except TypeError as te:
+            self.print_type_error(te)
+            del self
+        except Exception as e:
+            self.print_error(e)
+            del self
+
+
+    def set_timegrid(self, time_para):
+        self.timegrid = np.linspace(time_para[0], time_para[1], time_para[2])
+
+
+
+
+    def fits_timegrid(self, para:dict):
+        lower  = True
+        upper  = True
+        mono   = True
+        pos    = True
+        length = True
+        if len(para['timegrid']) != 3:
+            length = False
+        if para['timegrid'][0] > para['taus'][0]:
+            lower = False
+        if para['timegrid'][1] < para['taus'][-1]:
+            upper = False
+        if para['timegrid'][1] <= para['timegrid'][0]:
+            mono = False
+        if not self.is_positive(para['timegrid'][2]):
+            pos = False
+
+   
+        return lower, upper, mono, pos, length
+
+
+    def checkPulsepara(self, para:dict):
+        if self.is_equal(len(para['I0s']), len(para['taus'])) is False:
+            raise ValueError("There should be the same number of timedelays as pulses, got {} pulses and {} timedelays".format(para['I0s'], para['taus']))
+        for i in range(len(para['I0s'])):
+            if not isinstance(para['I0s'][i], float):
+                raise TypeError("Expect that all pulses be reals. Pulse {} has type {}".format(i+1, type(para['I0s'][i])))
+            if not self.is_positive(para['I0s'][i]):
+                raise ValueError("Expect that all pulses have positive intensity. Pulse {} has value {}".format(i+1, para['I0s'][i]))
+        for i in range(len(para['taus'])):
+            if not isinstance(para['taus'][i], float):
+                raise TypeError("Expect that all pulse delays be reals. Pulse delay {} has type {}".format(i+1, type(para['taus'][i])))
+            if not self.is_positive(para['taus'][i]):
+                raise ValueError("Expect that all pulse delays be positive. Pulse delay {} has value {}".format(i+1, para['taus'][i]))
+
+        if not isinstance(para['sigma'], float):
+            raise TypeError("Expect that the pulse width be a real number. \sigma has type {}".format(type(para['sigma'])))
+        if not self.is_positive(para['sigma']):
+            raise ValueError("Expect that the pulse width be positive. Sigma has value {}".format(para['sigma']))
+
+
+        if 'alpha' in para:
+            if self.is_equal(len(para['I0s']), len(para['alpha'])) is False:
+                raise ValueError("Expect same nr. of angles as pulses, got {} angles and {} pulses".format(len(para['alpha']), len(para['I0s'])))
+            if 'beta' not in para:
+                raise TypeError("If alpha is given, then beta must also be given. beta missing from Pulsepara")
+            if self.is_equal(len(para['alpha']), len(para['beta'])) is False:
+                raise ValueError("Expect same nr. of polar angles as azimuthal angles, got {} polar angles and {} azimutha angles".format(len(para['alpha']), len(para['beta'])))
+        for i in range(len(para['alpha'])):
+            if not isinstance(para['alpha'][i], float):
+                raise TypeError("Expect that all angles be reals. Polar angle {} has type {}".format(i+1, type(para['alpha'][i])))
+            if not isinstance(para['beta'][i], float):
+                raise TypeError("Expect that all angles be reals. Azimuthal angle {} has type {}".format(i+1, type(para['beta'][i])))
+            if not 0. <= para['alpha'][i] <= math.pi:
+                raise ValueError("ValueError for alpha. Expected a value in [0, \pi], but got {} \pi".format(para['alpha'][i]/math.pi))
+            if not 0. <= para['beta'][i] <= 2.*math.pi:
+                raise ValueError("ValueError for beta. Expected a value in [0, 2\pi], but got {} \pi".format(para['beta'][i]/math.pi))
+
+
+        if self.is_monotonically_positive(para['taus']) is False:
+            raise ValueError("The time delays are not monotonically increasing as they should be")
+        lower, upper, mono, pos, length = self.fits_timegrid(para)
+        if length is False:
+            raise ValueError("The number parameters in timegrid needs to be 3, got {}".format(len(para['timegrid'])))
+        if lower is False:
+            raise ValueError("The timegrid must cover the timedelays. The timegrid starts at {}, but the first delay is at {}".format(para['timegrid'][0], para['taus'][0])) 
+        if upper is False:
+            raise ValueError("The timegrid must cover the timedelays. The timegrid ends at {}, but the last delay is at {}".format(para['timegrid'][1], para['taus'][-1]))
+        if mono is False:
+            raise ValueError("The timegrid is not a monotonically increasing function as it should be")
+        if pos is False:
+            raise ValueError("The number of grid points needs to be a positive number, got {}".format(para['timegrid'][2]))
+
+
+       
+    @staticmethod
+    def get_P(I0, dalpha, sigma):
+        """
+        Get the pulse fluence
+        """
+        from parameters import P_from_I0_sigma as PIs
+
+        return PIs(I0, dalpha, sigma)
+
+    def get_all_Ps(self, dalpha):
+        """
+        Get all pulse fluences
+        """
+        Ps = np.zeros(len(self.I0s))
+        for i in range(len(self.I0s)):
+            Ps[i] = self.get_P(self.I0s[i], dalpha, self.sigma)
+
+        return Ps
+
+
+    def print_info(self, dalpha=None):
+        """ """
+
+        if self.name is not None:
+            print("Pulse info for:", self.name)
+        else:
+            print("Pulse info for nameless pulse")
+        print("Pulse type:", self.Ptype)
+        print("Number of pulses: {}".format(self.nP))
+        print("Number of time delays: {}".format(self.nt))
+        print("sigma: {}".format(self.sigma))
+        print("Time delays: taumin = {}, taumax = {}, nt = {}".format(self.taus[0], self.taus[-1], self.nt))
+        print("Timegrid: tmin = {}, tmax = {}, nt = {}".format(self.timegrid[0], self.timegrid[-1], len(self.timegrid)))
+        print("Pulse strengths and delays:")
+        if dalpha is None:
+            for i in range(self.nP):
+                if self.pol is None:
+                    print("Pulse {}: I0 = {}, alpha = {}, beta = {}".format(i+1, self.I0s[i], self.alpha[i], self.beta[i]))
+                else:
+                    print("Pulse {}: I0 = {}, alpha = {}, beta = {}, pol = {}".format(i+1, self.I0s[i], self.alpha[i], self.beta[i], self.pol[i]))
+
+        else:
+            for i in range(self.nP):
+                if self.pol is None:
+                    print("Pulse {}: I0 = {}, P = {}, alpha = {}, beta = {}".format(i+1, self.I0s[i], self.get_P(self.I0s[i], dalpha, self.sigma), self.alpha[i], self.beta[i]))
+                else:
+                    print("Pulse {}: I0 = {}, P = {}, alpha = {}, beta = {}, pol = {}".format(i+1, self.I0s[i], self.get_P(self.I0s[i], dalpha, self.sigma), self.alpha[i], self.beta[i], self.pol[i]))
+
+
+class StaticEfield():
+    """
+    A class for representing static fields
+    """
+
+    def __init__(self, Fieldpara:dict, name=None):
+        """
+        Constructor of the field instance
+
+        args:
+        -----
+            Fieldpara: dictionary
+                eps0: float
+                    The field strength
+                alpha: float
+                    The polar angle of the static field w.r.t. the lab z-axis
+                beta: float
+                    The azimuthal angle of the static field in the lab xy-plane
+            name: string/None
+                Optional name for the static field
+        """
+        try:
+            self.check_Fieldpara(Fieldpara)
+            self.eps0  = Fieldpara['eps0']
+            self.alpha = Fieldpara['alpha']
+            self.beta  = Fieldpara['beta']
+            self.name  = name
+        except TypeError as te:
+            print(te)
+        except ValueError as ve:
+            print(ve)
+        except Exception as e:
+            print("Exception raised as {}:".format(e))
+
+    def check_Fieldpara(self, para:dict):
+        """
+        Check consistency of the parameters
+        """
+        if not isinstance(para['eps0'], float):
+            raise TypeError("TypeError occured for eps0 in para-file. Expected float, but got {} ".format(type(para['eps0'])))
+        elif not isinstance(para['alpha'], float):
+            raise TypeError("TypeError occured for alpha in para-file. Expected float, but got {} ".format(type(para['alpha'])))
+        elif not isinstance(para['beta'], float):
+            raise TypeError("TypeError occured for beta in para-file. Expected float, but got {} ".format(type(para['beta'])))
+
+        elif para['eps0'] < 0.:
+            raise ValueError("ValueError for eps0. Expected a positive value, but got {}".format(para['eps0']))
+        elif not 0. <= para['alpha'] <= math.pi:
+            raise ValueError("ValueError for alpha. Expected a value in [0, \pi], but got {} \pi".format(para['alpha']/math.pi))
+        elif not 0. <= para['beta'] <= 2.*math.pi:
+            raise ValueError("ValueError for beta. Expected a value in [0, 2\pi], but got {} \pi".format(para['beta']/math.pi))
+
+
+
+
+    def print_info(self) -> None:
+        """
+        Prints info of the field
+        """
+        if self.name is not None:
+            print("Printing info for field: {}".format(self.name))
+        else:
+            print("Printing info for nameless field")
+        print("Field strength: {}, polar angle: {}, azimuthal angle {}".format(self.eps0, self.alpha, self.beta))
 
 
 
@@ -250,7 +619,7 @@ class FreeEfieldEvolutionOperator(EvolutionOperator):
 class FullEvolutionOperator(ImpulseEvolutionOperator, FreeEvolutionOperator):
     """Class for representing combined free and pulse evolution operators in the impact approximation"""
 
-    def __init__(self, P=0., B=1., t=0., dim=2, a=0., name=None, odd=False, mrep=False):
+    def __init__(self, P=0., B=1., t=0., dim=2, a=0., name=None, odd=False, mrep=False, StateCreation=False):
         """
         The full operator constructor
         """
@@ -264,15 +633,21 @@ class FullEvolutionOperator(ImpulseEvolutionOperator, FreeEvolutionOperator):
         self.B = B
         self.a = a
         self.t = t
-        self.U = self.Up * self.Uf
+        if StateCreation:
+            self.U = U2U1(self.Uf, self.Up)
+        else:
+            self.U = self.Up * self.Uf
 
 
-    def update_full_operator(self, P=None, which=None, value=0.):
+    def update_full_operator(self, P=None, which=None, value=0., StateCreation=False):
         if P is not None:
             self.update_pulse_operator(P)
         if which is not None:
             self.update_free_operator(which, value)
-        self.U = self.Up * self.Uf
+        if StateCreation:
+            self.U = U2U1(self.Uf, self.Up)
+        else:
+            self.U = self.Up * self.Uf
 
     def print_full_operator_info(self):
         self.print_operator_info()
@@ -283,13 +658,13 @@ class FullEvolutionOperator(ImpulseEvolutionOperator, FreeEvolutionOperator):
 class FullEfieldEvolutionOperator(ImpulseEvolutionOperator, FreeEfieldEvolutionOperator):
     """Class for representing combined free and pulse evolution operators in the impact approximation"""
 
-    def __init__(self, P=0., B=1., t=0., eps=0., D=0., dim=2, a=0., name=None, odd=False, mrep=False, pol=None, alpha=0., beta=0.):
+    def __init__(self, P=0., B=1., t=0., eps=0., D=0., dim=2, a=0., name=None, odd=False, mrep=False, pol=False, alpha=0., beta=0., StateCreation=False):
         """
         The full operator constructor
         """
         if mrep is True:
             EvolutionOperator.__init__(self, dim, Otype="fullEfield_m", name=name, odd=odd, mrep=mrep)
-            if pol is None:
+            if pol is False:
                 self.Up    = UI(P, dim, odd, full=True, mrep=mrep)
             else:
                 self.Up = UI_EFNP(P, dim, pol, alpha, beta, eps, D)
@@ -306,10 +681,13 @@ class FullEfieldEvolutionOperator(ImpulseEvolutionOperator, FreeEfieldEvolutionO
         self.alpha = alpha
         self.beta  = beta
         self.D     = D
-        self.U     = U2U1(self.Up, self.Uf) #self.Up * self.UfE
+        if StateCreation:
+            self.U = U2U1(self.Uf, self.Up)
+        else:
+            self.U = U2U1(self.Up, self.Uf) #self.Up * self.UfE
         self.pol   = pol
 
-    def update_pulse_operator(P=None, pol=None, alpha=None, beta=None):
+    def update_pulse_operator(P=None, pol=None, alpha=None, beta=None, StateCreation=False):
         if P is not None:
             self.update_pulse(P)
         if alpha is not None:
@@ -328,7 +706,10 @@ class FullEfieldEvolutionOperator(ImpulseEvolutionOperator, FreeEfieldEvolutionO
             self.update_pulse_operator(P, pol, alpha, beta)
         if which is not None:
             self.update_free_operator(which, value)
-        self.U = U2U1(self.Up, self.Uf)
+        if StateCreation:
+            self.U = U2U1(self.Uf, self.Up)
+        else:
+            self.U = U2U1(self.Up, self.Uf)
 
     def print_full_operator_info(self):
         self.print_operator_info()
@@ -345,7 +726,7 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
     # dim:    Dimensions of the representation
     # name:   Optianl name given to the operator
     # odd:    If True use only odd rotational states. If False, use only even states
-    def __init__(self, Pulses, B=1., dim=2, a=0., name=None, odd=False, mrep=False):
+    def __init__(self, Pulses, B=1., dim=2, a=0., name=None, odd=False, mrep=False, StateCreation=False):
         """Initialization method for the full impact evolution operator"""
         from qutip import Qobj, qeye
         if mrep:
@@ -355,7 +736,7 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
         self.Pulses = Pulses
         self.B = B
         self.a = a
-        self.set_full_operators()
+        self.set_full_operators(StateCreation)
         #Uhold = Qobj(qeye(dim))
         #for i in range(Pulses.nP):
         #    Up    = UI(Pulses.P[i], dim, odd)
@@ -364,17 +745,20 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
         #self.U = Uhold
 
 
-    def set_full_operators(self):
+    def set_full_operators(self, StateCreation=False):
         """Method for setting the full impact evolution operator"""
         from qutip import Qobj, qeye
         UHold = Qobj(qeye(self.dim))
         for k in range(self.Pulses.nP):
             Up    = UI(self.Pulses.P[k], self.dim, self.odd, self.mrep)
             Ufree = Uf(self.B, self.Pulses.t[k], self.dim, self.a, self.odd, self.mrep)
-            UHold = Up * Ufree * UHold
+            if StateCreation:
+                UHold = Ufree * Up * UHold
+            else:
+                UHold = Up * Ufree * UHold
         self.U = UHold
 
-    def update_full_operators(self, P=[0.], Pind=None, time=[0.], tind=None):
+    def update_full_operators(self, P=[0.], Pind=None, time=[0.], tind=None, StateCreation=False):
         """Method for updating the pulse strengths and delay times of the full impact evolution operator"""
         icont = 0
         jcont = 0
@@ -386,20 +770,20 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
             for j in tind:
                 self.Pulses.t[j] = time[jcont]
                 jcont += 1
-        self.set_full_operators()
+        self.set_full_operators(StateCreation)
         
 
 
 
-    def update_full_operators_B(self, B):
+    def update_full_operators_B(self, B, StateCreation=False):
         """Method for updating the rotational constant of the full operator"""
         self.B = B
-        self.set_full_operators()
+        self.set_full_operators(StateCreation)
 
-    def update_full_operators_a(self, a):
+    def update_full_operators_a(self, a, StateCreation=False):
         """Method for updating the rotational constant of the full operator"""
         self.a = a
-        self.set_full_operators()
+        self.set_full_operators(StateCreation)
 
 
 # The free Hamiltonian
@@ -467,7 +851,7 @@ class QOpt():
     Class for handling optimized quantum object preparation.
     """
 
-    def __init__(self, qobj, qobj0, Pulses, B, a=0.):
+    def __init__(self, qobj, qobj0, Pulses, B, a=0., StateCreation=False):
         """
         The constructor
         """
@@ -485,6 +869,7 @@ class QOpt():
         self.Pulses  = Pulses
         self.B       = B
         self.a       = a
+        self.SC      = StateCreation
 
         self.setEvOp()
 
@@ -499,7 +884,10 @@ class QOpt():
             Ufree = Uf(self.B, self.Pulses.t[i], int(math.sqrt(self.dim)-1), self.a, mrep=True)
             #Extend to non-parallel pulses
             UInt  = UI(self.Pulses.P[i], int(math.sqrt(self.dim)-1), odd=False, full=True, mrep=True)
-            Ui = UInt * Ufree * Ui
+            if self.SC:
+                Ui = Ufree * UInt * Ui
+            else:
+                Ui = UInt * Ufree * Ui
 
         self.U = Ui
 
@@ -510,7 +898,7 @@ class StateOpt(QOpt):
     Class for handling optimized state preparation.
     """
 
-    def __init__(self, state, istate, Pulses, B, a=0.):
+    def __init__(self, state, istate, Pulses, B, a=0., StateCreation=False):
         """
         Constructor
 
@@ -525,13 +913,15 @@ class StateOpt(QOpt):
                     The rotational constant
                 a: float
                     The centrifugal distortion constant
+                StateCreation: Boolean, default False
+                    If True, invert order of free and pulse evolution operators
         """
         if state.type == 'ket':
-            super().__init__(state, istate, Pulses, B, a)
+            super().__init__(state, istate, Pulses, B, a, StateCreation)
         else:
             raise Exception
 
-        def update_EvOp(self, P, t, B, a, dim):
+        def update_EvOp(self, P, t, B, a, dim, SC):
             """
             """
             from qutip import qeye
@@ -540,14 +930,16 @@ class StateOpt(QOpt):
                 Ufree = Uf(B, t[i], dim, a, mrep=True)
                 #Extend to non-parallel pulses
                 UInt  = UI(P[i], dim, odd=False, full=True, mrep=True)
-                Ui = UInt * Ufree * Ui
+                if SC:
+                    Ui = Ufree * UInt * Ui
+                else:
+                    Ui = UInt * Ufree * Ui
             U = Ui
 
             return U
 
 
-
-        def opt_pulses(x, B, a, dim, state, istate):
+        def opt_pulses(x, B, a, dim, state, istate, SC):
             """
             The function to optimize
             """
@@ -558,7 +950,7 @@ class StateOpt(QOpt):
                 P[i] = x[i]
                 t[i] = x[i+lP+1]
 
-            U = self.update_EvOp(P, t, B, a, dim)
+            U = self.update_EvOp(P, t, B, a, dim, SC)
             fstate = U * istate
             ov = fstate.overlap(state)
             return ov * ov.dag()
@@ -574,8 +966,7 @@ class StateOpt(QOpt):
                 x0[i] = Pulses.P[i]
                 x0[i+lP+1] = Pulses.t[i]
 
-
-            res = mini(opt_pulses, x0=Pulses, args=(self.B, self.a, self.dim, self.state, self.istate))
+            res = mini(opt_pulses, x0=Pulses, args=(self.B, self.a, self.dim, self.state, self.istate, self.SC))
 
 """
 Methods fro defining various Hamitonians and operations on the Hamiltonians based on QuTiP Qobj
@@ -771,6 +1162,12 @@ def Gauss_me(t, args):
 def double_Gauss_me(t, args):
     return args['I01'] * math.exp(-(t - args['t0'])**2./(2.*args['sigma']**2.)) + args['I02'] * math.exp(-(t - args['tau'])**2./(2.*args['sigma']**2.))
 
+def N_Gauss_me(t, args):
+    Pulses = 0.
+    for i in range(len(args['I0s'])):
+        Pulses += Gauss(t, args['taus'][i], args['I0s'][i], args['sigma'])
+    return Pulses
+
 
 def Lorentz(x:float, x0:float, eps:float, gamma:float, offset=0.) -> float:
     """
@@ -845,13 +1242,18 @@ def getP(deltaalpha,I0,sigma):
     return P
 
 # Get P from integration
-def getP_int(Da, I0, t0, sigma):
+def getP_int(Da, I0, t0, sigma, adapt=True):
     from scipy.integrate import quad
     from parameters import eps0, c
-    intI, tol = quad(Gauss, -np.inf,np.inf,args=(t0, I0, sigma))
+    print(Da, I0, t0, sigma)
+    if adapt: 
+        intI = quad(Gauss, t0 - 10.*sigma,t0 + 10.*sigma,args=(t0, I0, sigma))
+    else:
+        intI = quad(Gauss, -np.inf,np.inf,args=(t0, I0, sigma))
+    print(intI)
     # Where does the factor sqrt(0.5) come from??
     #return Da / (2.*eps0*c) * math.sqrt(0.5) * intI
-    return Da / (2.*eps0*c) * intI
+    return Da / (2.*eps0*c) * intI[0]
 
 # Obtain \sigma_I (in atomic units) from T_FWHM (fs)
 def sigmaFromFWHM(FWHM):
@@ -930,35 +1332,20 @@ def UI_sin2sin2p(P, n, odd=False, full=False):
     return U
 
 
-def UI_EFNP(P:float, jmax:int, pol='z', alpha=0., beta=0., eps=0., D=0.):
+def UI_EFNP(P:float, jmax:int, alpha=0., beta=0., eps=0., D=0.):
     """
     The pulse propagation operator for minterferometry measurment of the local e-field with non-paralell pulses.
     """
     ca = math.cos(alpha)
     cb = math.cos(beta)
-    if pol == 'z':
-        Hm = 1.j*P * (ca**2. * get_Hpolm_Mat(jmax, odd=False, full=True) - \
-                2.*ca*sa * get_cossincosm_Mat(jmax, odd=False, full=True) + \
-                sa**2. * 0.5*(get_sin2diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)))
-    elif pol == 'x':
-        sa = math.sin(alpha)
-        sb = math.sin(beta)
-        Hm = 1.j*P * (sa**2.*cb**2. * get_Hpolm_Mat(jmax, odd=False, full=True) + \
-                2.*ca*sa*cb**2. * get_cossincosm_Mat(jmax, odd=False, full=True) - \
-                2.*sa*cb*sb * get_cossinsinm_Mat(jmax, odd=False, full=True) + \
-                ca**2.*cb**2. * (get_sin2_diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)) -\
-                2.*ca*cb*sb*0.5*get_sin2sin2m_Mat(jmax, odd=False, full=True) + \
-                sb**2. * 0.5*(get_sin2_diagm_Mat(jmax) - get_sin2cos2m_Mat(jmax, odd=False, full=True)))
-
-    elif pol == 'y':
-        sa = math.sin(alpha)
-        sb = math.sin(beta)
-        Hm = 1.j*P * (sa**2.*sb**2. * get_Hpolm_Mat(jmax, odd=False, full=True) + \
-                2.*ca*sa*sb**2. * get_cossincosm_Mat(jmax, odd=False, full=True) + \
-                2.*sa*cb*sb * get_cossinsinm_Mat(jmax, odd=False, full=True) + \
-                ca**2.*sb**2. * (get_sin2_diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)) +\
-                2.*ca*cb*sb*0.5*get_sin2sin2m_Mat(jmax, odd=False, full=True) + \
-                cb**2. * 0.5*(get_sin2_diagm_Mat(jmax) - get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+    sa = math.sin(alpha)
+    sb = math.sin(beta)
+    c2b = math.cos(2.*beta)
+    s2b = math.sin(2.*beta)
+    H_c2 = ca**2. * get_Hpolm_Mat(jmax, odd=False, full=True)
+    H_cs = 2. * ca * sa * (cb * get_cossincosm_Mat(jmax) + sb * get_cossinsinm_Mat(jmax))
+    H_s2 = sa**2. * (get_sin2diagm_Mat(jmax) + 0.5 * c2b * get_sin2cos2m_Mat(jmax) + 0.5 * s2b * get_sin2sin2m_Mat(jmax))
+    Hm = 1.j* P * (H_c2 + H_cs + H_s2)
 
         
     He = 1.j*H_dipm(eps, D, jmax)
@@ -966,6 +1353,70 @@ def UI_EFNP(P:float, jmax:int, pol='z', alpha=0., beta=0., eps=0., D=0.):
     U = H.expm()
     return U
                 
+def UI_EFNP_z(P:float, jmax:int, alpha=0., eps=0., D=0.):
+    """
+    The pulse propagation operator for minterferometry measurment of the local e-field with non-paralell pulses, z-polarization
+    """
+    ca = math.cos(alpha)
+    sa = math.sin(alpha)
+    Hm = 1.j*P * (ca**2. * get_Hpolm_Mat(jmax, odd=False, full=True) - \
+                2.*ca*sa * get_cossincosm_Mat(jmax, odd=False, full=True) + \
+                sa**2. * 0.5*(get_sin2diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+
+
+    He = 1.j*H_dipm(eps, D, jmax)
+    H = Qobj(Hm+He)
+    U = H.expm()
+    return U
+
+def UI_EFNP_x(P:float, jmax:int, alpha=0., beta=0., eps=0., D=0.):
+    """
+    The pulse propagation operator for minterferometry measurment of the local e-field with non-paralell pulses, x-polarization
+    """
+    ca = math.cos(alpha)
+    cb = math.cos(beta)
+    sa = math.sin(alpha)
+    sb = math.sin(beta)
+    c2b = math.cos(2.*beta)
+    s2b = math.sin(2.*beta)
+    Hm = 1.j*P * (sa**2.*cb**2. * get_Hpolm_Mat(jmax, odd=False, full=True) + \
+                2.*ca*sa*cb**2. * get_cossincosm_Mat(jmax, odd=False, full=True) - \
+                2.*sa*cb*sb * get_cossinsinm_Mat(jmax, odd=False, full=True) + \
+                ca**2.*cb**2. * (get_sin2_diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)) -\
+                2.*ca*cb*sb*0.5*get_sin2sin2m_Mat(jmax, odd=False, full=True) + \
+                sb**2. * 0.5*(get_sin2_diagm_Mat(jmax) - get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+
+
+    He = 1.j*H_dipm(eps, D, jmax)
+    H = Qobj(Hm+He)
+    U = H.expm()
+    return U
+
+
+def UI_EFNP_y(P:float, jmax:int, alpha=0., beta=0., eps=0., D=0.):
+    """
+    The pulse propagation operator for minterferometry measurment of the local e-field with non-paralell pulses, y-polarization
+    """
+    ca = math.cos(alpha)
+    cb = math.cos(beta)
+    sa = math.sin(alpha)
+    sb = math.sin(beta)
+    c2b = math.cos(2.*beta)
+    s2b = math.sin(2.*beta)
+    Hm = 1.j*P * (sa**2.*sb**2. * get_Hpolm_Mat(jmax, odd=False, full=True) + \
+                2.*ca*sa*sb**2. * get_cossincosm_Mat(jmax, odd=False, full=True) + \
+                2.*sa*cb*sb * get_cossinsinm_Mat(jmax, odd=False, full=True) + \
+                ca**2.*sb**2. * (get_sin2_diagm_Mat(jmax) + get_sin2cos2m_Mat(jmax, odd=False, full=True)) +\
+                2.*ca*cb*sb*0.5*get_sin2sin2m_Mat(jmax, odd=False, full=True) + \
+                cb**2. * 0.5*(get_sin2_diagm_Mat(jmax) - get_sin2cos2m_Mat(jmax, odd=False, full=True)))
+
+
+
+    He = 1.j*H_dipm(eps, D, jmax)
+    H = Qobj(Hm+He)
+    U = H.expm()
+    return U
+
 
 
 # The free evolution operator
