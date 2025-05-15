@@ -22,9 +22,12 @@ class Pulses():
                 self.I0s   = Pulsepara['I0s']
                 self.sigma = Pulsepara['sigma']
                 self.nP = len(Pulsepara['I0s'])
-                if not self.diff_is_positive(Pulsepara['taus'][0], Pulsepara['timegrid'][0], Pulsepara['sigma']):
+                self.tmin = Pulsepara['tmin']
+                self.tmax = Pulsepara['tmax']
+                self.dt = (Pulsepara['dt'])
+                if not self.diff_is_positive(Pulsepara['taus'][0], Pulsepara['tmin'], Pulsepara['sigma']):
                     warnings.warn("The first timedelay is closer than 3\sigma to the lower edge of the timegrid, this could lead to numerical inaccuracies!!")
-                if not self.diff_is_positive(Pulsepara['timegrid'][-1], Pulsepara['taus'][-1], Pulsepara['sigma']):
+                if not self.diff_is_positive(Pulsepara['tmax'], Pulsepara['taus'][-1], Pulsepara['sigma']):
                     warnings.warn("The last timedelay is closer than 3\sigma to the upper edge of the timegrid, this could lead to numerical inaccuracies!!")
             else:
                 raise TypeError("Got an unknown pulsetype {}".format(Ptype))
@@ -43,13 +46,13 @@ class Pulses():
             self.Ptype  = Ptype
             self.name   = name
         except ValueError as ve:
-            print("ValueError: {}".format(ve))
+            print("ValueError in Pulses: {}".format(ve))
             #self.print_ve(ve)
         except TypeError as te:
-            print("TypeError: {}".format(te))
+            print("TypeError in Pulses: {}".format(te))
             #self.print_te(te)
         except Exception as e:
-            print("Exception: {}".format(e))
+            print("Exception in Pulses: {}".format(e))
             #self.print_error(e)
 
 
@@ -66,11 +69,20 @@ class Pulses():
         else:
             print("Pulse info for nameless pulse")
         print("Pulse type:", self.Ptype)
+        print("Number of pulses:", self.nP)
         if self.Ptype == "impulse":
-            print("Number of pulses:", len(self.Ps))
             print("Pulse strengths and delays:")
             for i in range(self.nP):
-                    print("Pulse", i, "P:", self.Ps[i], "delay:",self.taus[i])
+                    print("Pulse", i+1, "P:", self.Ps[i], "delay:",self.taus[i])
+        elif self.Ptype == "Gauss":
+            print("sigma: {}".format(self.sigma))
+            print("Pulse intensities and delays:")
+            for i in range(self.nP):
+                    print("Pulse", i+1, "I0:", self.I0s[i], "delay:",self.taus[i])
+
+            print("Timegrid:")
+            print("---------")
+            print("tmin: {}, tmax: {}, dt: {}".format(self.tmin, self.tmax, self.dt))
 
 
     def is_equal(self, n1:int, n2:int) -> bool:
@@ -231,8 +243,6 @@ class GaussPulses(Pulses):
         self.timegrid = np.linspace(time_para[0], time_para[1], time_para[2])
 
 
-
-
     def fits_timegrid(self, para:dict):
         lower  = True
         upper  = True
@@ -249,7 +259,6 @@ class GaussPulses(Pulses):
             mono = False
         if not self.is_positive(para['timegrid'][2]):
             pos = False
-
    
         return lower, upper, mono, pos, length
 
@@ -391,6 +400,8 @@ class StaticEfield():
         except Exception as e:
             print("Exception raised as {}:".format(e))
 
+
+
     def check_Fieldpara(self, para:dict):
         """
         Check consistency of the parameters
@@ -408,7 +419,6 @@ class StaticEfield():
             raise ValueError("ValueError for alpha. Expected a value in [0, \pi], but got {} \pi".format(para['alpha']/math.pi))
         elif not 0. <= para['beta'] <= 2.*math.pi:
             raise ValueError("ValueError for beta. Expected a value in [0, 2\pi], but got {} \pi".format(para['beta']/math.pi))
-
 
 
 
@@ -750,8 +760,8 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
         from qutip import Qobj, qeye
         UHold = Qobj(qeye(self.dim))
         for k in range(self.Pulses.nP):
-            Up    = UI(self.Pulses.P[k], self.dim, self.odd, self.mrep)
-            Ufree = Uf(self.B, self.Pulses.t[k], self.dim, self.a, self.odd, self.mrep)
+            Up    = UI(self.Pulses.Ps[k], self.dim, self.odd, self.mrep)
+            Ufree = Uf(self.B, self.Pulses.taus[k], self.dim, self.a, self.odd, self.mrep)
             if StateCreation:
                 UHold = Ufree * Up * UHold
             else:
@@ -764,11 +774,11 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
         jcont = 0
         if Pind is not None:
             for i in Pind:
-                self.Pulses.P[i] = P[icont]
+                self.Pulses.Ps[i] = P[icont]
                 icont += 1
         if tind is not None:
             for j in tind:
-                self.Pulses.t[j] = time[jcont]
+                self.Pulses.taus[j] = time[jcont]
                 jcont += 1
         self.set_full_operators(StateCreation)
         
