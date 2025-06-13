@@ -68,6 +68,15 @@ def sigma_from_P_I0(P, Dalpha, I0):
     return sigma
 
 
+def kappa_from_B_sigma(B, sigma):
+    """
+    """
+    kappa = 3. * B * 2. * math.sqrt(2.*math.log(2.)) * sigma
+
+    return kappa
+    
+
+
 """
 Systems of molecular ions
 """

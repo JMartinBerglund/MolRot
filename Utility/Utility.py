@@ -11,13 +11,19 @@ class Pulses():
     """Class for representing pulses with time delay."""
 
     def __init__(self, Pulsepara, Ptype, name=None):
-        """ """
+        """ 
+        """
         import warnings
+
 
         try:
             if Ptype == "impulse":
                 self.Ps = Pulsepara['Ps']
                 self.nP = len(Pulsepara['Ps'])
+            elif Ptype == "impulse_BCH":
+                self.Ps = Pulsepara['Ps']
+                self.nP = len(Pulsepara['Ps'])
+                self.sigma = Pulsepara['sigma']
             elif Ptype == "Gauss":
                 self.I0s   = Pulsepara['I0s']
                 self.sigma = Pulsepara['sigma']
@@ -112,19 +118,19 @@ class Pulses():
 
 
     @staticmethod
-    def print_error(e):
-        print("Exception raised: {}".format(e))
+    def print_error(e, where="Pulses"):
+        print("Exception raised in {}: {}".format(where, e))
 
     @staticmethod
-    def print_value_error(ve):
-        print("ValueError raised: {}".format(ve))
+    def print_value_error(ve, where):
+        print("ValueError raised in {}: {}".format(where, ve))
     
     @staticmethod
-    def print_type_error(te):
-        print("TypeError raised: {}".format(te))
+    def print_type_error(te, where):
+        print("TypeError raised in {}: {}".format(where, te))
 
-    def __del__(self):
-        print("Del")
+    #def __del__(self):
+    #    print("Del")
 
 class ImpactPulses(Pulses):
     """Class for representing pulses in the impact approximation"""
@@ -206,7 +212,10 @@ class ImpactPulses(Pulses):
         print()
         print("Pulse delays:")
         print("-------------")
-        print("tau_min: {}, tau_max: {}, number of delays: {}, dtau: {}".format(self.taus[0], self.taus[-1], len(self.taus), self.taus[1] - self.taus[0]))
+        if len(self.taus) > 1:
+            print("tau_min: {}, tau_max: {}, number of delays: {}, dtau: {}".format(self.taus[0], self.taus[-1], len(self.taus), self.taus[1] - self.taus[0]))
+        else:
+            print("tau: {}".format(self.taus[0]))
         print()
 
 
@@ -223,20 +232,20 @@ class GaussPulses(Pulses):
 
         try:
             # Check that the Pulsepara-file has consistent entries
-            self.checkPulsepara(Pulsepara)
+            #self.checkPulsepara(Pulsepara)
             # Call super init to initialize the basics
             super().__init__(Pulsepara, "Gauss", name=name)
             # Set the timegrid
-            self.set_timegrid(Pulsepara['timegrid'])
+            #self.set_timegrid(Pulsepara['timegrid'])
         except ValueError as ve:
-            self.print_value_error(ve)
-            del self
+            self.print_value_error(ve, "GaussPulses")
+            #del self
         except TypeError as te:
-            self.print_type_error(te)
-            del self
+            self.print_type_error(te, "GaussPulses")
+            #del self
         except Exception as e:
-            self.print_error(e)
-            del self
+            self.print_error(e, "GaussPulses")
+            #del self
 
 
     def set_timegrid(self, time_para):
@@ -349,14 +358,20 @@ class GaussPulses(Pulses):
         print("Number of time delays: {}".format(self.nt))
         print("sigma: {}".format(self.sigma))
         print("Time delays: taumin = {}, taumax = {}, nt = {}".format(self.taus[0], self.taus[-1], self.nt))
-        print("Timegrid: tmin = {}, tmax = {}, nt = {}".format(self.timegrid[0], self.timegrid[-1], len(self.timegrid)))
+        print("Timegrid: tmin = {}, tmax = {}, dt = {}".format(self.tmin, self.tmax, self.dt))
         print("Pulse strengths and delays:")
         if dalpha is None:
             for i in range(self.nP):
                 if self.pol is None:
-                    print("Pulse {}: I0 = {}, alpha = {}, beta = {}".format(i+1, self.I0s[i], self.alpha[i], self.beta[i]))
+                    if self.alpha is None:
+                        print("Pulse {}: I0 = {}".format(i+1, self.I0s[i]))
+                    else:
+                        print("Pulse {}: I0 = {}, alpha = {}, beta = {}".format(i+1, self.I0s[i], self.alpha[i], self.beta[i]))
                 else:
-                    print("Pulse {}: I0 = {}, alpha = {}, beta = {}, pol = {}".format(i+1, self.I0s[i], self.alpha[i], self.beta[i], self.pol[i]))
+                    if self.aĺppha is None:
+                        print("Pulse {}: I0 = {}, pol = {}".format(i+1, self.I0s[i], self.pol[i])) 
+                    else:
+                        print("Pulse {}: I0 = {}, alpha = {}, beta = {}, pol = {}".format(i+1, self.I0s[i], self.alpha[i], self.beta[i], self.pol[i]))
 
         else:
             for i in range(self.nP):
@@ -364,6 +379,64 @@ class GaussPulses(Pulses):
                     print("Pulse {}: I0 = {}, P = {}, alpha = {}, beta = {}".format(i+1, self.I0s[i], self.get_P(self.I0s[i], dalpha, self.sigma), self.alpha[i], self.beta[i]))
                 else:
                     print("Pulse {}: I0 = {}, P = {}, alpha = {}, beta = {}, pol = {}".format(i+1, self.I0s[i], self.get_P(self.I0s[i], dalpha, self.sigma), self.alpha[i], self.beta[i], self.pol[i]))
+
+
+
+    def print_pulse_2file(self, name=None, ind=0):
+        """
+        """
+        
+        if name is None:
+            if self.name is None:
+                name = "Nameless_pulse.dat"
+            else:
+                name = self.name + ".dat"
+        print(name)
+        lt = int((self.tmax - self.tmin) / self.dt) + 1 
+        with open(name, "w") as f:
+            try:
+                f.write("{} {}\n".format("Time (atomic units)","Pulse strength (atomic untis)"))
+                for i in range(lt):
+                    t = self.tmin + float(i) * self.dt  
+                    f.write("{} {}\n".format(t,Gauss(t, self.taus[ind], self.I0s[ind], self.sigma)))
+            except Exception as e:
+                print("Exception: {} in print_pulse2file".format(e))
+            finally:
+                f.close()
+
+
+    def plot_pulse(self, ind=0, Trot=None, BW=False):
+        """
+        """
+        import matplotlib.pyplot as plt
+
+        # Length of timegrid
+        lt = int((self.tmax - self.tmin) / self.dt) + 1
+        time = np.zeros(lt)
+        pulse = np.zeros(lt)
+        if BW:
+            tmin = self.tmax
+            tmax = self.tmin
+            dt   = self.dt
+        else:
+            tmin = self.tmin
+            tmax = self.tmax
+            dt = self.dt
+        for i in range(lt):
+            t = tmin + float(i) * dt  
+            time[i] = t
+            pulse[i] = Gauss(t, self.taus[ind], self.I0s[ind], self.sigma)  
+
+        fig, ax = plt.subplots()
+        ax.set_ylabel("Pulse strength (atomic units)")
+        if isinstance(Trot, float):
+            ax.set_xlabel("Time / $T_{rot}$")
+            scale = Trot
+        else:
+            ax.set_xlabel("Time (atomic units)")
+            scale = 1.
+        ax.plot(time / scale, pulse, color="blue")
+        plt.show()
 
 
 class StaticEfield():
@@ -796,6 +869,46 @@ class EvolutionOperators(ImpulseEvolutionOperator, FreeEvolutionOperator):
         self.set_full_operators(StateCreation)
 
 
+
+
+class EvolutionOperators_CBH(EvolutionOperators):
+    """Class for representing an evolution operator with many pulses and delays """
+
+    # Pulses: Instances of fhe Pulses class
+    # B:      Rotational constant (au)
+    # dim:    Dimensions of the representation
+    # name:   Optianl name given to the operator
+    # odd:    If True use only odd rotational states. If False, use only even states
+    def __init__(self, Pulses, B=1., a=0., name=None):
+        """Initialization method for the full impact evolution operator with Campbell-Baker-Hausdorff corrections. This implies 2D"""
+        from qutip import Qobj, qeye
+        super().__init__(Pulses, B, 2, a, name, odd=False, mrep=False, StateCreation=False)
+ 
+
+    def set_full_operators(self, StateCreation=False):
+        """Method for setting the full impact evolution operator"""
+        from qutip import Qobj, qeye
+        UHold = Qobj(qeye(self.dim))
+        for k in range(self.Pulses.nP):
+            Up     = UI(self.Pulses.Ps[k], self.dim, self.odd, self.mrep)
+            Ufree  = Uf(self.B, self.Pulses.taus[k], self.dim, self.a, self.odd, self.mrep)
+            U_corr = set_BCH_corr(self.B, self.Pulses.Ps[k], self.Pulses.sigma) 
+            UHold  = U2U1(U_corr, U2U1(Up, U2U1(Ufree, UHold)))
+        self.U = UHold
+
+
+    def update_pulse_operator(self, P):
+        """Method for setting the full impact evolution operator"""
+        P = P[0]
+        from qutip import Qobj, qeye
+        UHold = Qobj(qeye(self.dim))
+        Up     = UI(P, self.dim, self.odd, self.mrep)
+        Ufree  = Uf(self.B, 0., self.dim, 0., self.odd, self.mrep)
+        U_corr = set_BCH_corr(self.B, P, self.Pulses.sigma) 
+        UHold  = U2U1(U_corr, U2U1(Up, U2U1(Ufree, UHold)))
+        self.U = UHold
+
+
 # The free Hamiltonian
 # @descr: The free Hamiltonian is diagonal with eigenvalues j(j+1)B
 #         The pulse only connects even states with even and odd states 
@@ -979,7 +1092,177 @@ class StateOpt(QOpt):
             res = mini(opt_pulses, x0=Pulses, args=(self.B, self.a, self.dim, self.state, self.istate, self.SC))
 
 """
-Methods fro defining various Hamitonians and operations on the Hamiltonians based on QuTiP Qobj
+Corrections to the impact approximation from the Baker-Campbell_Hausdorff formula
+"""
+
+def set_BCH_corr(B, P, sigma):
+    """
+    Set the correction to the impulse evulution operator for the first two degrees of nested commutators in the Baker-Campbell-Hausdorff formula
+    """
+    from qutip import qeye, sigmax, sigmay, sigmaz
+    from parameters import kappa_from_B_sigma
+    
+    kappa = kappa_from_B_sigma(B, sigma)
+    theta = theta_kp(kappa, P)
+    a_0 = 3.**(-1.)
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    a_3 = -2. * 21.**(-1.)
+    #n0    = kappa - a_0 * P
+    n0    = n_0_kp(kappa, P) #P * (a_0 + 162. * kappa**4. * (a_0 - a_3))
+    n1    = n_1_kp(kappa, P)
+    n2    = n_2_kp(kappa, P)
+    n3    = n_3_kp(kappa, P)
+
+
+    #U_corr = math.cos(theta) * qeye(2) - 1.j * math.sin(theta) * (n1 * sigmax() + n2 * sigmay() + n3 * sigmaz())
+
+
+    #return U_corr
+
+    #C = 1.j * a_1 * kappa * P * (3.**(-1.) * (kappa - P) * sigmax() + sigmay() + a_1 * 3.**(-1.) * P * sigmaz())
+
+    return theta, n0, n1, n2, n3
+
+
+def tfact(kappa, P):
+    """
+    """
+    a_0 = 3.**(-1.)
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    a_3 = -2. * 21.**(-1.)
+    f1 = a_0**2. + a_3**2.
+    f2 = 2. * (162.*kappa)**2. * (a_0 - a_3)**2.
+    f3 = a_1**2. * (1. + (2.*kappa)**2.)**2.
+    #f1 = kappa * (kappa/a_1 - 2.*P*a_3)
+    #f2 = P**2.*(a_1**2. + a_3**2.) +9.
+    return P * math.sqrt(f1 + f2 + f3)
+
+
+def theta_kp(kappa, P):
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    fact = tfact(kappa, P)
+    #return a_1 * kappa * P * fact
+    return fact
+
+def theta_kp_deg(kappa, P):
+    return theta_kp(kappa, P) * 180. / math.pi
+
+def n_0_kp(kappa, P):
+    a_0 = 3.**(-1.)
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    a_3 = -2. * 21.**(-1.)
+    
+    n0    = P * (a_0 + 162. * kappa**4. * (a_0 - a_3))
+    return n0
+
+
+def n_1_kp(kappa, P):
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    a_3 = -2. * 21.**(-1.)
+    #f1 = math.sqrt(kappa*(kappa/a_1 - 2.*P*a_3) + (P*a_3)**2.)
+    f1 = a_1*P * (1. + 2.*kappa**2.)
+    #f2 = tfact(kappa ,P)
+    f2 = theta_kp(kappa ,P)
+    if f2 == 0.:
+        return 0.
+    else:
+        return f1 * f2**(-1.)
+
+def n_2_kp(kappa, P):
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    #f1 = 1.
+    f1 = -2. * a_1 * kappa * P
+    f2 = theta_kp(kappa, P)
+    if f2 == 0.:
+        return 0.
+    else:
+        return f1 * f2**(-1.)
+
+def n_3_kp(kappa, P):
+    a_0 = 3.**(-1.)
+    a_1 = 2. *3.**(-1.) * math.sqrt(5.)**(-1.)
+    a_3 = -2. * 21.**(-1.)
+    f1 = P * (a_3 - 162.*kappa**4. * (a_0 - a_3) ) 
+    f2 = theta_kp(kappa, P)
+    if f2 == 0.:
+        return 0.
+    else:
+        return f1 * f2**(-1.)
+
+def set_BCH_corr4D(B, P, sigma):
+    """
+    Set the correction to the impulse evulution operator for the first two degrees of nested commutators in the Baker-Campbell-Hausdorff formula
+    """
+    from qutip import qeye, sigmax, sigmay, sigmaz, tensor
+    from parameters import kappa_from_B_sigma
+    
+    kappa = kappa_from_B_sigma(B, sigma)
+    Id  = qeye(2)
+    O1  = tensor(Id, sigmax())
+    O2  = tensor(Id, sigmay())
+    O3  = tensor(Id, sigmaz())
+    
+    # The diagonal elements of the c2-matrix
+    a = jp1(0,0) * jm1(1,0)
+    c = jp1(2,0) * jm1(3,0) + jm1(2,0) * jp1(1,0)
+    e = jp1(4,0) * jm1(5,0) + jm1(4,0) * jp1(3,0)
+    g = jp1(6,0) * jm1(7,0) + jm1(6,0) * jp1(5,0)
+
+    # The off-diagonal terms
+    b = jp1(0,0) * jp1(1,0)
+    d = jp1(2,0) * jp1(3,0)
+    f = jp1(4,0) * jp1(5,0)
+
+    G01 = 0.5 * (b + f)
+    G03 = 0.25 * (a + c - e - f)
+    G11 = 0.5 * d
+    G22 = G11
+    G30 = 0.25 * (a - c + e - f)
+    G31 = 0.5 * (b - f)
+    G33 = 0.25 * (a - c - e + f)
+
+    C02 = 4. * G03 - 7. * G01 - 14. * G31
+    C12 = - (7. * G11 - 14. * G22)
+    C21 = 7. * G22 - 14. * G11
+    C32 = 4. * G01
+
+    pref = -1.j * kappa * P # Which is the correct sign??
+
+    C = pref * (3.**(-1.) * (7.*kappa*C02 - P*G03*C02) * tensor(Id, sigmax()) \
+            + C02 * tensor(Id, sigmay()) + \
+            3.**(-1.) * P * (G01*C02 + G11*C12 - G22*C21) * tensor(Id, sigmaz()) \
+            + 3.**(-1.) * P * G22*C32 * tensor(sigmax(), Id) \
+            + 3.**(-1.) * (7.*kappa*(C12 - 2*C21) - P*(G01*C12 + G30*C21)) * tensor(sigmax(), sigmax()) \
+            + C21 * tensor(sigmax(), sigmay()) \
+            + 3.**(-1.) * P * (G01*C12 + G11*C02) * tensor(sigmax(), sigmaz()) \
+            + C12 *tensor(sigmay(), sigmax()) \
+            - 3.**(-1.) * (7.*kappa * (C21 + 2.*C12) - P * (G03*C21 + G30*C12)) *tensor(sigmay(), sigmay()) \
+            + 3.**(-1.) * P * (G11*C21 - G22*C12) * tensor(sigmaz(), Id) \
+            + 3.**(-1.) * (kappa * (7.*C32 - 4.*C02) - P * G03*C32) *tensor(sigmaz(), sigmax()) \
+            + C32 * tensor(sigmaz(), sigmay()) + 3.**(-1.) * P * G01*C32 * tensor(sigmaz(), sigmaz())
+            )
+
+
+    #G01 = 0.5 * (2./(3.*math.sqrt(5.)) + 10./(11.*math.sqrt(13.)))
+    #G03 = 0.25 * (3.**(-1.) + 11./21. - 39./77. - 83. *(15.*11.)**(-1.))
+    #G11 = 1.
+    #G31 = 0.5 * (2./(3.*math.sqrt(5.)) - 10./(11.*math.sqrt(13.)))
+    
+  
+    #pref = 1.j * kappa * P * (7.*G01 - 4.*G31)
+    #f1   = 7./3. * kappa - 3.**(-1.) * P * G01
+    #f2   = 1. 
+    #f3   = 3.**(-1.) * P * G03
+
+    #C      = pref * (f1 * O1 + f2 * O2 + f3 * O3)
+    U_corr = C.expm() 
+
+    return U_corr
+
+
+
+"""
+Methods for defining various Hamitonians and operations on the Hamiltonians based on QuTiP Qobj
 """
 def H0(B, n, a=0., odd=False, full=False):
     """
@@ -1176,6 +1459,12 @@ def N_Gauss_me(t, args):
     Pulses = 0.
     for i in range(len(args['I0s'])):
         Pulses += Gauss(t, args['taus'][i], args['I0s'][i], args['sigma'])
+    return Pulses
+
+def N_Gauss(t:float, taus, I0s, sigma:float) -> float:
+    Pulses = 0.
+    for i in range(len(args['I0s'])):
+        Pulses += Gauss(t, taus[i], I0s[i], sigma)
     return Pulses
 
 
