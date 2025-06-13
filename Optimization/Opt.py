@@ -93,11 +93,11 @@ class Optimizer():
         import Utility as Ut
         from Utility import UBWO, Proj
         from Tomomod import PauliN
+
         Up.update_pulse_operator(x)
         Op_BW = UBWO(Up.Up, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
         S3 = Proj(Op_BW, PauliN(3, dim))
-        #print(S0, S3)
         L = l0 * (S0 - 1.)**2. + l3 * S3**2.
 
         return L
@@ -139,7 +139,6 @@ class Optimizer():
         Op_BW = UBWO(U.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
         S1 = Proj(Op_BW, PauliN(1, dim))
-        #print(S0, S3)
         L = l0 * (S0 - 1.)**2. + l1 * (S1 - 1.)**2.
  
 
@@ -282,17 +281,27 @@ class Optimizer():
         return l0 * (S0 - 1.)**2. + l3 * S3**2.
 
     @staticmethod
-    def min_DP_omega_S3(x, Ufull, Op, dim, l0, l3):
+    def min_DP_omega_S3(x, Ufull, P, Op, dim, l0, l3):
         from Tomomod import PauliN
         from Utility import UBWO, Proj
-        P1 = x * (Ufull.Pulses.P[0] + Ufull.Pulses.P[1])
-        P2 = (1. - x) * (Ufull.Pulses.P[0] + Ufull.Pulses.P[1])
+        P1 = x * P
+        P2 = (1. - x) * P
         Ufull.update_full_operators(P=[P1, P2], Pind=[0,1])
         Op_BW = UBWO(Ufull.U, Op)
         S0 = Proj(Op_BW, PauliN(0, dim))
+        S1 = Proj(Op_BW, PauliN(1, dim))
+        S2 = Proj(Op_BW, PauliN(2, dim))
         S3 = Proj(Op_BW, PauliN(3, dim))
-
-        return l0 * (S0 - 1.)**2. + l3 * S3**2.
+        
+        # make sure that omega is in [0, 1]
+        #if (omega < 0.) or (omega > 1.):
+        #    return 100.
+        #else:
+        #    return l0 * (S0 - 1.)**2. + l3 * S3**2.
+        #lag = l0 * (S0 - 1.)**2. + l3 * S3**2.  
+        #lag = l0 * S0**2. + (1. -(S1**2. + S2**2.))**2. + l3 * S3**2.  
+        lag = l0 * S0**2. + l3 * S3**2.  
+        return lag 
 
 
 
@@ -322,13 +331,16 @@ class Optimizer():
                 U = Ut.ImpulseEvolutionOperator(var['P1'], dim) 
                 return U
             elif met == 'DP_t2':
-                Pulses = Ut.Pulses([par['P1'], par['P2']], [par['t1'], var['t2']])
+                Pulsepara = {'Ps': [par['P1'], par['P2']], 'taus': [par['t1'], var['t2']]}
+                #Pulses = Ut.Pulses([par['P1'], par['P2']], [par['t1'], var['t2']])
+                Pulses = Ut.ImpactPulses(Pulsepara)
                 U = Ut.EvolutionOperators(Pulses, par['B'], dim)
                 return U
             elif met == 'DP_omega':
                 P1 = var['omega'] * par['P']
                 P2 = (1. - var['omega']) * par['P']
-                Pulses = Ut.Pulses([P1, P2], [par['t1'], par['t2']])
+                Pulsepara = {'Ps': [P1, P2], 'taus': [par['t1'], par['t2']]}
+                Pulses = Ut.ImpactPulses(Pulsepara)
                 U = Ut.EvolutionOperators(Pulses, par['B'], dim)
                 return U
             else:
@@ -358,7 +370,7 @@ class Optimizer():
             Returns:
                 opt: Intance of result from minimize
         """
-        from scipy.optimize import minimize
+        from scipy.optimize import minimize, Bounds
         
         if self.target['Target'] == 'S3':
             if self.method['Method'] == 'SP':
@@ -366,7 +378,7 @@ class Optimizer():
             elif self.method['Method'] == 'DP_t2':
                 opt = minimize(self.min_DP_t2_S3, x0=[self.varlist['t2']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
             elif self.method['Method'] == 'DP_omega':
-                opt = minimize(self.min_DP_omega_S3, x0=[self.varlist['omega']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
+                opt = minimize(self.min_DP_omega_S3, x0=[self.varlist['omega']], args=(U, self.paramlist['P'], self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']), bounds=Bounds(lb=0., ub=1.))
             else:
                 raise RuntimeError("No valid method given for S3 minimization:", self.method['Method'])
         
@@ -533,6 +545,118 @@ class Optimizer():
         else:
             raise Exception("Optimization was requested with either unsuported method or target")
 
+
+
+class Optimizer_BCH(Optimizer):
+    """
+    Optimization class in the Baker-Campbell-Hausdorff correction to the impulse approximation. 
+    """
+
+    def __init__(self, O0, dim:int, variables:dict, params:dict, method:dict, target:dict, lagrange:float) -> None:
+        """
+        """
+        super().__init__(O0, dim, variables, params, method, target, lagrange)
+
+    @staticmethod
+    def set_evolution_operator(dim:int, met:dict, tar:dict, var=None, par=None):
+        """Set the evolution operator based on pulse strength(s), rotational constant and time delay(s).
+
+            Args:
+                dim: int
+                    Dimension of the basis
+                method: dict
+                    Which optimization method to use
+                tar: dict
+                    Target of the optimization
+                var: dictionary
+                    The variables of the optimization routine
+                par: dict
+                    The parameters of the optimization routine
+
+            Returns:
+                U : Qobj
+                    The evolution operator
+        """
+        import Utility as Ut
+        #from parameteres import set_kappa
+        from Utility import U2U1, set_BCH_corr
+        if tar == 'S3':
+            if met == 'SP':
+                Pulsepara = {'Ps': [var['P1']], 'taus': [0.], 'sigma': par['sigma']}
+                Pulses = Ut.Pulses(Pulsepara, Ptype="impulse_BCH")
+                U = Ut.EvolutionOperators_CBH(Pulses, par['B'], 2)
+                #U  = U2U1(set_BCH_corr(par['B'], var['P1'], par['sigma']), UI.Up)
+                #print("Tried correction")
+                return U
+            elif met == 'DP_t2':
+                Pulses = Ut.Pulses([par['P1'], par['P2']], [par['t1'], var['t2']])
+                UI = Ut.EvolutionOperators(Pulses, par['B'], dim)
+                U  = U2U1(set_BCH_corr(par['B'], var['P1'], par['sigma']), UI)
+                return U
+            elif met == 'DP_omega':
+                P1 = var['omega'] * par['P']
+                P2 = (1. - var['omega']) * par['P']
+                Pulses = Ut.Pulses([P1, P2], [par['t1'], par['t2']])
+                U = Ut.EvolutionOperators(Pulses, par['B'], dim)
+                return U
+            else:
+                raise RuntimeError("WARNING:", met, 'not implemented yet for S3!')
+
+        elif (tar == 'S1') or (tar == 'S2'):
+            if met == 'SP':
+                UI = Ut.FullEvolutionOperator(par['P1'], par['B'], var['t1'], dim) 
+                U  = U2U1(set_BCH_corr(par['B'], var['P1'], par['sigma']), UI)
+                return U
+            elif met == 'DP_t1':
+                Pulses = Ut.Pulses([par['P1'], par['P2']], [var['t1'], par['t2']])
+                UI = Ut.EvolutionOperators(Pulses, par['B'], dim)
+                U  = U2U1(set_BCH_corr(par['B'], var['P1'], par['sigma']), UI)
+                return U
+            else:
+                raise RuntimeError("WARNING:", met, 'not implemented yet for S1, S2!')
+        else:
+            raise RuntimeError("WARNING:", met, 'not implemented yet for S1, S2!')
+
+    @staticmethod
+    def min_SP(x:float, Up, Op, dim:int, l0:float, l3:float) -> float:
+        """Minimizes the projection of $\sigma_3$ for backwards propagation with a single pulse, with the restraint that the total population of the 2-level system remains 1
+        
+        Args:
+
+            x : float
+                The pulse fluence to optimize
+            
+            Up : QuTiP Qobj
+                Evolution operator of the pulse in the impulse approximation
+            
+            Op : QuTiP Qobj
+                The measurment operator to be propagated
+            
+            dim : int
+                dimension of the basis $\ge 2$
+            
+            l0 : float
+                Lagrange multiplyer for projection on $\sigma_0$
+            
+            l3 : float
+                Lagrange multiplyer for projection on $\sigma_3$
+
+        Outputs:
+            
+            L : float
+                Lagrange function to minimize
+        """
+        import Utility as Ut
+        from Utility import UBWO, Proj
+        from Tomomod import PauliN
+
+        Up.update_pulse_operator(x)
+        Op_BW = UBWO(Up.U, Op)
+        S0 = Proj(Op_BW, PauliN(0, dim))
+        S3 = Proj(Op_BW, PauliN(3, dim))
+        L = l0 * (S0 - 1.)**2. + l3 * S3**2.
+
+        return L
 
 
 class Optimizer2P(Optimizer):
