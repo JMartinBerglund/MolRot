@@ -1190,6 +1190,19 @@ class GaussTomography(Tomography):
 
         self.Ops = Ops
 
+
+    def optimize(self, Op, variables:dict, params:dict, method:dict, target:dict, lagrange:float):
+        """
+        We want to optimize pulse parameters to implement dynamics of a given measurment operator.
+
+        Args:
+        -----
+        
+        """
+        from Opt import GaussOptimizer
+        Opt = GaussOptimizer(Op, self.dim, variables, params, method, target, lagrange)
+        Opt.optimization()
+
 #    def print_info(self, full_mol_info=False):
 #        """
 #        """
