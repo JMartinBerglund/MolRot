@@ -479,7 +479,7 @@ class Interferometry():
 
             # Set axis labels 
             if scaleTrot:
-                plt.xlabel('$\omega$ ($T_{rot}^{-1}$)' )
+                plt.xlabel('$\omega$ ($T_{rot}$)' )
                 if setTicks:
                     plt.xticks(np.arange(self.omega[0]*Trot, self.omega[-1]*Trot, step=2))
             else:
@@ -645,6 +645,20 @@ class Interferometry():
         return res.x
 
 
+    def show_H0(self, scaleB=False):
+        """
+        """
+        from Utility import H0
+        
+        if scaleB:
+            B = 1.
+        else:
+            B = self.molecule.B
+        H0 = H0(B, self.dim, self.molecule.a)
+        return H0
+
+
+
 class ImpactInterferometry(Interferometry):
     """
     Interferometry in the impact approximation
@@ -725,6 +739,7 @@ class ImpactInterferometry(Interferometry):
         inter = np.zeros(lt)
         Op = ket2dm(basis(self.dim, self.mstate))
         for i in range(lt):
+            print("Running interferometry, step {} of {}".format(i+1, lt))
             #self.set_pulses(self.Pulses.Ps, [0., self.Pulses.taus[i]])
             self.set_EvolutionOperator(self.Pulses.Ps[0], self.Pulses.Ps[1], 0., self.Pulses.taus[i])
             fstate = self.U * self.istate
@@ -1088,7 +1103,7 @@ class PulsesInterferometry(Interferometry):
         Runs an interferometry run and records final time delay dependent populatins
         """
         from qutip import mesolve, ket2dm, basis, Options
-        from Utility import H0, H1_I0, double_Gauss_me, Proj
+        from Utility import H0, H1_I0, double_Gauss_me, Gauss_me, Proj, FreeEvolutionOperator as FE
         if self.mrep:
             print("WARNING: Only full representation implemented for m representation yet!")
             H0 = H0_m(self.molecule.B, self.dim, self.molecule.a, self.odd, full=True)
@@ -1106,9 +1121,25 @@ class PulsesInterferometry(Interferometry):
             if options.store_final_state == False:
                 print("Warning, must store final state in order to record final state population. Setting to True!")
                 options.store_final_state = True
+        exp_fact = 5.
         for i in range(ltau):
-            time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
-            output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
+            print("Running interferometry, step {} of {}".format(i+1, ltau))
+            if self.Pulses.taus[i] > 2. * exp_fact * self.Pulses.sigma:
+                print("Splitting the time grid")
+                free_time = self.Pulses.taus[i] - 2. * exp_fact * self.Pulses.sigma
+                FreeU = FE(self.molecule.B, free_time, self.dim, self.molecule.a)
+                #time1 = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+                time1 = np.arange(self.Pulses.tmin, exp_fact * self.Pulses.sigma, self.Pulses.dt)
+                time2 = np.arange(exp_fact * self.Pulses.sigma + free_time, self.Pulses.taus[i] - self.Pulses.tmin, self.Pulses.dt)
+                #output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
+                output1 = mesolve([H0, [HI, Gauss_me]], self.istate, time1, e_ops=[Op], options=options, args={'t0': 0.,'I0': self.Pulses.I0s[0], 'sigma': self.Pulses.sigma})
+                fstate1 = output1.final_state
+                freestate = FreeU.Uf * fstate1
+                output = mesolve([H0, [HI, Gauss_me]], freestate, time2, e_ops=[Op], options=options, args={'t0': self.Pulses.taus[i], 'I0': self.Pulses.I0s[1], 'sigma': self.Pulses.sigma})
+            else:
+                #time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+                time = np.arange(self.Pulses.tmin, self.Pulses.taus[i] - self.Pulses.tmin, self.Pulses.dt)
+                output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
 
             dm = ket2dm(output.final_state)
             inter[i] = Proj(Op, dm)
@@ -1122,17 +1153,6 @@ class PulsesInterferometry(Interferometry):
         #self.print_istate(self.istate)
 
 
-    def show_H0(self, scaleB=False):
-        """
-        """
-        from Utility import H0
-        
-        if scaleB:
-            B = 1.
-        else:
-            B = self.molecule.B
-        H0 = H0(B, self.dim, self.molecule.a)
-        return H0
 
 class PulsesEfieldInterferometry(Interferometry):
     """
