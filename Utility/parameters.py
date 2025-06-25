@@ -102,7 +102,12 @@ class Molecule():
                 Molpara = Molecule
             if ('B' in Molpara) and ('Da' in Molpara):
                 for key, val in Molpara.items():
-                    setattr(self, key, val)
+                    if (key == 'a')  and not vibration:
+                        setattr(self, key, 0.)
+                    else:
+                        setattr(self, key, val)
+
+
             else:
                 raise KeyError("A molecule must at least have a definite rotational constant and polarizability anisotropy. Molecule has B: {}, Molecule has Da: {}".format('B' in Molpara, 'Da' in Molpara))
         except KeyError as ke:
@@ -132,7 +137,6 @@ def set_MolParams(Molecule, custom_para=None, vibration=False) -> dict:
     """
     Retruns a dictionary of molecular paramters
     """
-    print("WARNING: The rotational centrifugal distortion constant a doesn' t have the correct value!!")
     if vibration:
         print("WARNING, THE VIBRATIONAL PARAMETERS HAVE NOT BEEN PROPERLY IMPLEMENTED YET")
     if Molecule == 'MgH+':
