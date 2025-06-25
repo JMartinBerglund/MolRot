@@ -211,6 +211,7 @@ class Interferometry():
         """
         #from parameters import set_state
         #self.istate = set_state(self.istate, self.dim, self.mrep)
+        print(hasattr(istate, 'type'))
         if isinstance(istate, int):
             if self.mrep:
                 if istate < (self.dim + 1)**2:
@@ -223,8 +224,11 @@ class Interferometry():
                 else:
                     raise Exception("Can't set to a state larger than the basis size")
 
-        elif hasattr(istate.type, 'ket'):
-            self.istate = istate
+        elif hasattr(istate, 'type'):
+            if istate.type == 'ket':
+                self.istate = istate
+            else:
+                raise TypeError("A Qobject must be of ket type, recieved: {}".format(istate.type))
         else:
             print("Warning, no initial state was provided, setting to ground state!")
             if self.mrep:
@@ -409,9 +413,9 @@ class Interferometry():
         from scipy.fft import fft, fftfreq, fftshift
         # Check that the interferogram and delay arrays exist
         # and take the Fourier transform if they do
-        if (self.tau is not None) and (self.inter is not None):
-            ntau = len(self.tau)
-            dtau = self.tau[1] - self.tau[0]
+        if (self.Pulses.taus is not None) and (self.inter is not None):
+            ntau = len(self.Pulses.taus)
+            dtau = self.Pulses.taus[1] - self.Pulses.taus[0]
             Fourier = fft(self.inter)
             if shift:
                 self.spectrum = fftshift(np.abs(Fourier)) / ntau
@@ -424,23 +428,36 @@ class Interferometry():
             print("Tried to take the Fourier transform of interferogram. Can't do that if either the interferogram or time grid don' t exist.")
             raise Exception()
         
-    def plot_interferogram(self, title=None, scale_Trot=False) -> None:
+    def plot_interferogram(self, title=None, scaleTrot=False, xmin=None, xmax=None, ymin=None, ymax=None) -> None:
         import matplotlib.pyplot as plt
         if (self.Pulses.taus is not None) and (self.inter is not None):
             # Prepare plot
-            if scale_Trot:
+            if scaleTrot:
                 Trot = 2.*math.pi * self.molecule.B**(-1.)
                 plt.plot(self.Pulses.taus / Trot, self.inter)
             else:
                 plt.plot(self.Pulses.taus, self.inter)
 
             # Set axis labels
-            plt.xlabel('$\\tau$')
+            if not scaleTrot:
+                plt.xlabel('$\\tau$ (atomic units)')
+            else:
+                plt.xlabel('$\\tau$ ($T_{rot}^{-1}$)')
             plt.ylabel('Interferogram')
 
             # Set the title
             if title is not None:
                 plt.title(title)
+            
+            # Scaling
+            if xmin is not None:
+                plt.xlim(left=xmin)
+            if xmax is not None:
+                plt.xlim(right=xmax)
+            if ymin is not None:
+                plt.ylim(bottom=ymin)
+            if ymax is not None:
+                plt.ylim(top=ymax)
 
             # Plot the graph
             plt.plot()
@@ -477,7 +494,13 @@ class Interferometry():
 
             # Scaling
             if xmin is not None:
-                pass
+                plt.xlim(left=xmin)
+            if xmax is not None:
+                plt.xlim(right=xmax)
+            if ymin is not None:
+                plt.ylim(bottom=ymin)
+            if ymax is not None:
+                plt.ylim(top=ymax)
 
             # Plot the graph
             plt.plot()
@@ -706,7 +729,7 @@ class ImpactInterferometry(Interferometry):
             self.set_EvolutionOperator(self.Pulses.Ps[0], self.Pulses.Ps[1], 0., self.Pulses.taus[i])
             fstate = self.U * self.istate
             dm = ket2dm(fstate)
-            inter[i] = Proj(Op,dm)
+            inter[i] = Proj(Op,dm) # Check real not complex!!!
             #fspop  = fstate.extract_states(self.mstate)
             #inter[i] = abs(fspop.overlap(fspop))**2. 
             
@@ -1014,7 +1037,7 @@ class PulsesInterferometry(Interferometry):
     Interferometry taking the full effect o the pulses into account
     """
 
-    def __init__(self, Pulsepara=None, time=[], molpara=None, istate=None, mstate=0, dim=3, Name=None, odd=False, mrep=False) -> None:
+    def __init__(self, Molpara, Pulsepara=None, istate=None, mstate=0, dim=3, Name=None, odd=False, mrep=False) -> None:
         """
         Initialization routine for a two orr-resonance fs-pulse interferometry run
 
@@ -1048,64 +1071,16 @@ class PulsesInterferometry(Interferometry):
             mrep: Boolean
                 Whether to include all mstates (True) o rnot (False)
         """
-        import Utility as Ut
+        from Utility import GaussPulses as GP
         try:
-            if "a" in molpara:
-                super().__init__(istate, mstate, molpara['B'], dim, molpara['a'], Name, odd, mrep) 
+            super().__init__(Molpara, istate, mstate, dim, Name, odd, mrep, custom_para=None) 
+            if Pulsepara is not None:
+                self.Pulses = GP(Pulsepara)
             else:
-                super().__init__(istate, mstate, molpara['B'], dim, 0., Name, odd, mrep)
+                self.Pulses = None
         except KeyError as e:
             raise Exception(e)
         
-        if Pulsepara is not None:
-            try:
-                self.I0    = [Pulsepara['I01'], Pulsepara['I02']]
-                self.sigma = Pulsepara['sigma']
-                self.t0    = Pulsepara['t0']
-                self.tau   = Pulsepara['tau']
-                self.time  = time
-            except KeyError as e:
-                raise Exception(e)
-        else:
-            self.I0    = None
-            self.sigma = None
-            self.t0    = None
-            self.tau   = None
-        if molpara is not None:
-            try:
-                self.Da = molpara['Da']
-            except KeyError as e:
-                raise Exception(e)
-        else:
-            self.Da = None
-
-        #print(Ut.getP_int(self.Da, 2.*self.I0[0], self.t0, self.sigma))
-
-
-
-    #def set_pulses(self, Pulses) -> None:
-    #    """
-    #    Sets the pulses for the interferometry instance
-    #            Pulses: Array of pulses instance 
-    #                Contains the pulse strengths and time delay
-    #    """
-    #    import Utility as Ut
-    #    nP  = len(Pulses)
-    #    self.Pulses  = []
-    #    for i in range(nP):
-    #        Pulse = Ut.Pulses(Pulses[i].P, Pulses[i].t)
-    #        self.Pulses.append(Pulse)
-
-    #def set_EvolutionOperators(self) -> None:
-    #    """
-    #    Text
-    #    """
-    #    import Utility as Ut
-    #    nP  = len(self.Pulses)
-    #    print("Number of pulses:", nP)
-    #    self.Us  = []
-    #    for i in range(nP):
-    #        self.Us.append(Ut.EvolutionOperators(self.Pulses[i], self.B, dim=self.dim))
 
         
     def run_interferometry(self, options=None) -> None:
@@ -1116,13 +1091,13 @@ class PulsesInterferometry(Interferometry):
         from Utility import H0, H1_I0, double_Gauss_me, Proj
         if self.mrep:
             print("WARNING: Only full representation implemented for m representation yet!")
-            H0 = H0_m(self.B, self.dim, self.a, self.odd, full=True)
-            HI = H1_I0(self.Da, self.dim, self.odd, full=True)
+            H0 = H0_m(self.molecule.B, self.dim, self.molecule.a, self.odd, full=True)
+            HI = H1_I0(self.molecule.Da, self.dim, self.odd, full=True)
             
         else:
-            H0 = H0(self.B, self.dim, self.a)
-            HI = H1_I0(self.Da, self.dim)
-        ltau = len(self.tau)
+            H0 = H0(self.molecule.B, self.dim, self.molecule.a)
+            HI = H1_I0(self.molecule.Da, self.dim)
+        ltau = len(self.Pulses.taus)
         Op = ket2dm(basis(self.dim, self.mstate))
         inter = np.zeros(ltau)
         if options is None:
@@ -1132,13 +1107,32 @@ class PulsesInterferometry(Interferometry):
                 print("Warning, must store final state in order to record final state population. Setting to True!")
                 options.store_final_state = True
         for i in range(ltau):
-            output = mesolve([H0, [HI, double_Gauss_me]], self.istate, self.time, e_ops=[Op], options=options, args={'t0': self.t0,'I01': self.I0[0], 'I02': self.I0[1],'sigma': self.sigma, 'tau': self.tau[i]})
+            time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+            output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
 
             dm = ket2dm(output.final_state)
             inter[i] = Proj(Op, dm)
         self.inter = inter
 
+    def print_info(self):
+        """
+        """
+        super().print_info()
+        self.Pulses.print_info()
+        #self.print_istate(self.istate)
 
+
+    def show_H0(self, scaleB=False):
+        """
+        """
+        from Utility import H0
+        
+        if scaleB:
+            B = 1.
+        else:
+            B = self.molecule.B
+        H0 = H0(B, self.dim, self.molecule.a)
+        return H0
 
 class PulsesEfieldInterferometry(Interferometry):
     """
