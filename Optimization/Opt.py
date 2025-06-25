@@ -61,6 +61,64 @@ class Optimizer():
         #print(self.target['Target'], self.target['Target'] in self.Target_list)
 
 
+    def optimization(self) -> None:
+        """
+        Checks for inconsisencies before performing an optimization 
+        """
+        met = self.method['Method']
+        tar = self.target['Target']
+        var = self.varlist
+        par = self.paramlist
+
+        if tar == 'S3':
+            if met == 'SP':
+                if 'P1' in var:
+                    self.optimize()
+                else:
+                    raise Exception
+            elif (met == 'DP_t2'):
+                if ('P1' in par) and ('P2' in par) and ('t2' in var):
+                    self.optimize()
+                else:
+                    raise Exception
+            elif met == 'DP_omega':
+                if ('P' in par) and ('t2' in par) and ('omega' in var):
+                    self.optimize()
+            else:
+                print("At the moment we are only focusing on the SP, DP_t2 and DP_omega methods for target S3", met, "will hopefully be implemented soon")
+                self.opt = None
+
+        elif (tar == 'S1') or (tar == 'S2'):
+            if met == 'SP':
+                if ('t1' in var) and ('P1' in par):
+                    self.optimize()
+                else:
+                    raise Exception
+            elif met == 'DP_t1':
+                if ('t1' in var) and ('P1' in par) and ('P2' in par) and ('t2' in par) and ('B' in par):
+                    self.optimize()
+            else:
+                print("At the moment we are only focusing on the SP and DP_t1 methods.", met, "will hopefully be implemented soon")
+                self.opt = None
+
+
+    def run_optimization(self) -> None:
+        """
+        Checks that method and target are in supported lists and calls the optimization routing
+        """
+        if (self.method['Method'] in self.Method_list) and (self.target['Target'] in self.Target_list):
+            self.optimization()
+        else:
+            raise Exception("Optimization was requested with either unsuported method or target")
+
+
+
+
+class ImpactOptimizer(Optimizer):
+
+    def __init__(self, O0, dim:int, variables:dict, params:dict, method:dict, target:dict, lagrange:float):
+        super().__init__(O0, dim, variables, params, method, target, lagrange)
+
     @staticmethod
     def min_SP(x:float, Up, Op, dim:int, l0:float, l3:float) -> float:
         """Minimizes the projection of $\sigma_3$ for backwards propagation with a single pulse, with the restraint that the total population of the 2-level system remains 1
@@ -467,46 +525,6 @@ class Optimizer():
     #def optimize_DP_t2_S3(self):
     #    print('In optimize_DPt2_S3')
 
-    def optimization(self) -> None:
-        """
-        Checks for inconsisencies before performing an optimization 
-        """
-        met = self.method['Method']
-        tar = self.target['Target']
-        var = self.varlist
-        par = self.paramlist
-
-        if tar == 'S3':
-            if met == 'SP':
-                if 'P1' in var:
-                    self.optimize()
-                else:
-                    raise Exception
-            elif (met == 'DP_t2'):
-                if ('P1' in par) and ('P2' in par) and ('t2' in var):
-                    self.optimize()
-                else:
-                    raise Exception
-            elif met == 'DP_omega':
-                if ('P' in par) and ('t2' in par) and ('omega' in var):
-                    self.optimize()
-            else:
-                print("At the moment we are only focusing on the SP, DP_t2 and DP_omega methods for target S3", met, "will hopefully be implemented soon")
-                self.opt = None
-
-        elif (tar == 'S1') or (tar == 'S2'):
-            if met == 'SP':
-                if ('t1' in var) and ('P1' in par):
-                    self.optimize()
-                else:
-                    raise Exception
-            elif met == 'DP_t1':
-                if ('t1' in var) and ('P1' in par) and ('P2' in par) and ('t2' in par) and ('B' in par):
-                    self.optimize()
-            else:
-                print("At the moment we are only focusing on the SP and DP_t1 methods.", met, "will hopefully be implemented soon")
-                self.opt = None
-
         #if (met == 'SP'):
         #    if 'P1' in var:
         #        if tar == 'S3':
@@ -536,14 +554,123 @@ class Optimizer():
         #    raise Exception('Implementation work in progress. No supported optimization method was provided')
                 
 
-    def run_optimization(self) -> None:
+
+class GaussOptimizer(Optimizer):
+
+    def __init__(self, O0, dim:int, variables:dict, params:dict, method:dict, target:dict, lagrange:float, options=None):
         """
-        Checks that method and target are in supported lists and calls the optimization routing
         """
-        if (self.method['Method'] in self.Method_list) and (self.target['Target'] in self.Target_list):
-            self.optimization()
+        super().__init__(O0, dim, variables, params, method, target, lagrange)
+        self.options=options # Options for the sesolver. Might be necessarry for convergence
+
+
+    @staticmethod
+    def min_SP(x:float, H0, HI, Da, sigma, tmax, tmin, dt, Op, dim:int, l0:float, l3:float, options) -> float:
+        """Minimizes the projection of $\sigma_3$ for backwards propagation with a single pulse, with the restraint that the total population of the 2-level system remains 1
+        
+        Args:
+
+            x : float
+                The pulse fluence to optimize
+            
+            Up : QuTiP Qobj
+                Evolution operator of the pulse in the impulse approximation
+            
+            Op : QuTiP Qobj
+                The measurment operator to be propagated
+            
+            dim : int
+                dimension of the basis $\ge 2$
+            
+            l0 : float
+                Lagrange multiplyer for projection on $\sigma_0$
+            
+            l3 : float
+                Lagrange multiplyer for projection on $\sigma_3$
+
+        Outputs:
+            
+            L : float
+                Lagrange function to minimize
+        """
+        #mport Utility as Ut
+        from parameters import I0_from_P_sigma as I0ps
+        from Utility import Gauss_me, Proj
+        from Tomomod import PauliN
+        from qutip import sesolve, basis
+
+        # Update the pulse intensity (Equivalent to the pulse fluence at constant sigma) Up.update_pulse_operator(x)
+        I0 = I0ps(x, Da, sigma)
+        istate1 = basis(dim, 0)
+        istate2 = basis(dim, 1)
+        res1 = sesolve([H0, [HI, Gauss_me]], istate1, np.arange(tmax, tmin, -dt), args={}, options=options)
+        #Op_BW = UBWO(Up.Up, Op)
+        #S0 = Proj(Op_BW, PauliN(0, dim))
+        #S3 = Proj(Op_BW, PauliN(3, dim))
+        L = 1. #l0 * (S0 - 1.)**2. + l3 * S3**2.
+        print(H0)
+        print(HI)
+
+        return L
+
+ 
+
+
+    def optimize(self):
+        """
+        """
+        from scipy.optimize import minimize
+        import Utility as Ut
+
+        #U = self.set_evolution_operator(self.dim, self.method['Method'], self.target['Target'], self.varlist, self.paramlist)
+        self.opt = self.minimizer()
+        #self.opt = opt
+
+
+
+    def minimizer(self):
+        """Method to select optimization method based on the target and method dictionaries
+
+            Args:
+                U: Qobj
+                    Evolution operator
+
+            Returns:
+                opt: Intance of result from minimize
+        """
+        from scipy.optimize import minimize, Bounds
+        
+        if self.target['Target'] == 'S3':
+            if self.method['Method'] == 'SP':
+                opt = minimize(self.min_SP, x0=self.varlist['P1'], args=(self.H0, self.Hint, self.Molecule.Da, self.Pulses.sigma, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
+            elif self.method['Method'] == 'DP_t2':
+                opt = minimize(self.min_DP_t2_S3, x0=[self.varlist['t2']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']))
+            elif self.method['Method'] == 'DP_omega':
+                opt = minimize(self.min_DP_omega_S3, x0=[self.varlist['omega']], args=(U, self.paramlist['P'], self.O, self.dim, self.lagrange['l0'], self.lagrange['l3']), bounds=Bounds(lb=0., ub=1.))
+            else:
+                raise RuntimeError("No valid method given for S3 minimization:", self.method['Method'])
+        
+        elif self.target['Target'] == 'S1':
+            if self.method['Method'] == 'SP':
+                opt = minimize(self.min_SP_S1, x0=self.varlist['t1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
+            elif self.method['Method'] == 'DP_t1':
+                opt = minimize(self.min_DP_t1_S1, x0=[self.varlist['t1']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l1']))
+            else:
+                raise RuntimeError("No valid method given for S1 minimization:", self.method['Method'])
+        
+        elif self.target['Target'] == 'S2':
+            if self.method['Method'] == 'SP':
+                opt = minimize(self.min_SP_S2, x0=self.varlist['t1'], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l2']))
+            elif self.method['Method'] == 'DP_t1':
+                opt = minimize(self.min_DP_t1_S2, x0=[self.varlist['t1']], args=(U, self.O, self.dim, self.lagrange['l0'], self.lagrange['l2']))
+            else:
+                raise RuntimeError("No valid method given for S2 minimization:", self.method['Method'])
+
         else:
-            raise Exception("Optimization was requested with either unsuported method or target")
+            raise Exception
+
+        return opt
+ 
 
 
 
