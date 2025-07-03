@@ -157,12 +157,12 @@ class Interferometry():
             if not isinstance(Molecule, str):
                 self.check_para(Molecule)
             self.molecule = M(Molecule, custom_para)
-            #self.B        = B
-            #self.a        = a
-            #self.istate   = istate
             self.mstate   = mstate
             self.dim      = dim
-            self.Name     = Name
+            if Name is None:
+                self.Name = None
+            else:
+                self.Name = Name
             self.U        = None
             self.inter    = None
             self.tau      = None
@@ -181,28 +181,30 @@ class Interferometry():
         except Exception as e:
             print("Exception: {}".format(e))
 
-    def check_para(self, para:dict):
+    def check_para(self, para:dict|str):
         """
         Checking the paramter dictionary for consistency.
         """
-        if 'B' in para:
-            if isinstance('B', float):
-                if 'B' < 0.:
-                    raise ValueError("The provided rotational constant is negative: {}".format(para['B']))
-            else:
-                    raise TypeError("Expected a real rotational constant, the provided one is: {}".format(type(para['B'])))
-        else:
-            raise KeyError("No rotational constant provided in the dictionary")
+        if isinstance(para, dict):
 
-        if 'a' in para:
-            if isinstance('a', float):
-                if 'a' > 0.:
-                    raise ValueError("The provided rotational distorsional constant is positive: {}".format(para['a']))
+            if 'B' in para:
+                if isinstance('B', float):
+                    if 'B' < 0.:
+                        raise ValueError("The provided rotational constant is negative: {}".format(para['B']))
+                else:
+                    raise TypeError("Expected a real rotational constant, the provided one is: {}".format(type(para['B'])))
             else:
+                raise KeyError("No rotational constant provided in the dictionary")
+
+            if 'a' in para:
+                if isinstance('a', float):
+                    if 'a' > 0.:
+                        raise ValueError("The provided rotational distorsional constant is positive: {}".format(para['a']))
+                else:
                     raise TypeError("Expected a real rotational distorsional constant, the provided one is: {}".format(type(para['a'])))
-        else:
-            print("No distorsional constant provided, setting to 0")
-            para.update({'a': 0.})
+            else:
+                print("No distorsional constant provided, setting to 0")
+                para.update({'a': 0.})
         
 
     def initialize_istate(self, istate):
@@ -211,7 +213,6 @@ class Interferometry():
         """
         #from parameters import set_state
         #self.istate = set_state(self.istate, self.dim, self.mrep)
-        print(hasattr(istate, 'type'))
         if isinstance(istate, int):
             if self.mrep:
                 if istate < (self.dim + 1)**2:
@@ -254,7 +255,15 @@ class Interferometry():
         """
         pass
 
-
+    def get_visibility(self):
+        """
+        """
+        if self.inter is None:
+            raise TypeError("The interferogram is none.")
+        else:
+            Vplus  = max(self.inter)
+            Vminus = min(self.inter)
+            return (Vplus - Vminus) / (Vplus + Vminus)
         
     def run_2levelImpactEfield_interferometry(self, eps0, D, P, tau) -> None:
         """
@@ -665,16 +674,15 @@ class ImpactInterferometry(Interferometry):
     """
 
     #def __init__(self, Ps=None, ts=None, B=1., istate=None,  mstate=0, dim=3, a=0., Name=None, odd=False, mrep=False) -> None:
-    def __init__(self, Molecule:dict, Pulsepara:dict, istate=None,  mstate=0, dim=3, Name=None, odd=False, mrep=False) -> None:
+    def __init__(self, Molecule:dict|str, Pulsepara:dict, istate=None,  mstate=0, dim=3, Name=None, odd=False, mrep=False) -> None:
         """
         Text
         """
+        from Utility import ImpactPulses as IP
         #super().__init__(istate, mstate, B, dim, a, Name, odd, mrep)
         try:
             super().__init__(Molecule, istate, mstate, dim, Name, odd, mrep)
-            self.initialize_pulses(Pulsepara)
-            #self.Ps       = Ps
-            #self.tau      = ts
+            self.Pulses = IP(Pulsepara)
         except Exception as e:
             print("An exception vas raised: {}".format(e))
 
@@ -751,19 +759,47 @@ class ImpactInterferometry(Interferometry):
         
         self.inter = inter
 
+    def print_info(self):
+        """
+        """
+        super().print_info()
+        print()
+        self.Pulses.print_pulse_info()
+
 class ImpactEfieldInterferometry(ImpactInterferometry):
     """
     Interferometry in the impact approximation
     """
+
 
     #def __init__(self, Ps=None, ts=None, B=1., eps=0., D=0., istate=None,  mstate=0, dim=3, a=0., Name=None, odd=False, mrep=False, alpha=None, beta=None, pol=None) -> None:
     def __init__(self, Molecule, Pulsepara, Fieldpara, istate=None,  mstate=0, dim=3, Name=None, odd=False, mrep=False) -> None:
         """
         Text
         """
+        from Utility import ImpactPulses as IP, StaticEfield as EF
         try:
-            ImpactInterferometry.__init__(Molecule, Pulsepara, istate, mstate, dim, Name, odd, mrep)
-            self.initialize_Efield(Fieldpara)
+            # Setting molecule and the impact interferometry pulses, initial state, dimension etc 
+            super().__init__(Molecule, Pulsepara, istate, mstate, dim, Name, odd, mrep)
+            if hasattr(self.Pulses, 'alpha'):
+                print("alpha", self.Pulses.alpha)
+            else:
+                print("No alpha")
+
+            #if "alpha" not in Pulsepara:
+            #    self.Pulses.alpha = None
+            #else:
+            #    self.Pulses.alpha = Pulsepara['alpha']
+            #    #self.Pulses.alpha = np.zeros(len(self.Pulses.Ps))
+            #if "beta" not in Pulsepara:
+            #    self.Pulses.beta = None
+            #else:
+            #    self.Pulses.beta = Pulsepara['beta']
+                #self.Pulses.beta = np.zeros(len(self.Pulses.Ps))
+            # Setting the static electric field
+            self.EF = EF(Fieldpara)
+            #self.set_EvolutionOperator()
+
         except Exception as e:
             print("An exception occured in initialization: {}".format(e))
         #if alpha is None:
@@ -782,32 +818,10 @@ class ImpactEfieldInterferometry(ImpactInterferometry):
         #self.pol      = pol
 
 
-        if (Ps is not None) and (ts is not None):
-            self.set_pulses(Ps, ts, self.alpha, self.beta)
-        self.set_EvolutionOperator()
+        #if (Ps is not None) and (ts is not None):
+        #    self.set_pulses(Ps, ts, self.alpha, self.beta)
 
-        if isinstance(istate, int):
-            if self.mrep:
-                if istate < (self.dim + 1)**2:
-                    self.istate = qutip.basis((self.dim + 1)**2,istate)
-                else:
-                    raise Exception("Can't set to a state larger thann the basis size")
-            else:
-                if istate < self.dim:
-                    self.istate = qutip.basis(self.dim, istate)
-                else:
-                    raise Exception("Can't set to a state larger thann the basis size")
-
-        elif hasattr(istate.type, 'ket'):
-            self.istate = istate
-        else:
-            print("Warning, no initial state was provided, setting to ground state!")
-            if self.mrep:
-                self.istate = qutip.basis((self.dim + 1)**2,0)
-            else:
-                self.istate = qutip.basis(self.dim, 0)
-
-        
+                
     
     def initialize_Efield(self, para:dict):
         """
@@ -816,7 +830,7 @@ class ImpactEfieldInterferometry(ImpactInterferometry):
         from Utility import Static_Efield as EF
         self.Efield = EF(para)
 
-    def set_pulses(self, Ps, ts, alpha, beta) -> None:
+    def set_pulses(self, Ps, ts, alpha=None, beta=None) -> None:
         """
         Sets the pulses for the interferometry instance
             
@@ -830,10 +844,19 @@ class ImpactEfieldInterferometry(ImpactInterferometry):
                 beta: Array of floats
                     The polarization angles of the pulses w.r.t. the x-y-axis in the lab frame
         """
-        import Utility as Ut
-        angles = {'alpha': alpha, 'beta': beta}
-        Pulses = Ut.Pulses(Ps, ts, angles)
-        self.Pulses = Pulses
+        from Utility import ImpactPulses as IP
+        if self.Pulses.alpha is None:
+            Pulsepara = {'Ps': self.Pulses.Ps, 'taus': self.Pulses.taus}
+        else:
+            Pulsepara = {'Ps': self.Pulses.Ps, 'taus': self.Pulses.taus, 'alpha': self.Pulses.alpha, 'beta': self.Pulses.beta}
+
+        #if self.Pulses.alpha.any() == None:
+        #    alpha = np.zeros(self.Pulses.nP)
+        #if self.Pulses.beta.any() == None:
+        #    beta = np.zeros(self.Pulses.nP)
+        #angles = {'alpha': alpha, 'beta': beta}
+        #Pulses = Ut.Pulses(Ps, ts, angles)
+        self.Pulses = IP(Pulsepara)
         #if pol is not None:
         #    self.Pulses.pol = pol
 
@@ -851,30 +874,38 @@ class ImpactEfieldInterferometry(ImpactInterferometry):
             raise ValueError("index must be either 0 or 1")
 
     
-    def set_EvolutionOperator(self) -> None:
+    def set_EvolutionOperator(self, time_ind) -> None:
         """
         Sets the Evolution operator based on the pulse strengths and time delay
         """
         from Utility import FullEfieldEvolutionOperator,  U2U1
         from qutip import Qobj, qeye
-        print(hasattr(self.Pulses, "pol"))
         #if hasattr(self.Pulses, 'pol'):
         #if self.mrep:
         #    n = (self.dim + 1)**2.
         #else:
         #    n = self.dim
         #Uhold = Qobj(qeye(n))
-        if self.alpha is not None:
+        print(time_ind, self.Pulses.taus[time_ind])
+        if hasattr(self.Pulses.alpha, 'array') and hasattr(self.Pulses.beta, 'array'):
             Uhold = Qobj(qeye((self.dim+1)**2))
-            for i in range(len(self.Pulses.P)):
-                Uhold = U2U1(FullEfieldEvolutionOperator(self.Pulses.P[i], self.B, self.Pulses.t[i], self.eps, self.D, self.dim, self.a, self.name, self.odd, self.mrep, True, self.alpha[i], self.beta[i]), Uhold) 
+            FEE1 =FullEfieldEvolutionOperator(self.Pulses.Ps[0], self.molecule.B, 0., self.EF.eps0, self.molecule.D, (self.dim+1)**2, self.molecule.a, self.Name, self.odd, self.mrep, True, self.Pulses.alpha[0], self.Pulses.beta[0])  
+            FEE2 =FullEfieldEvolutionOperator(self.Pulses.Ps[1], self.molecule.B, self.Pulses.taus[ime_ind], self.EF.eps0, self.molecule.D, (self.dim+1)**2, self.molecule.a, self.Name, self.odd, self.mrep, True, self.Pulses.alpha[1], self.Pulses.beta[1])  
+
+            #for i in range(self.Pulses.nP):
+                #FEE =FullEfieldEvolutionOperator(self.Pulses.Ps[i], self.molecule.B, self.Pulses.taus[i], self.EF.eps0, self.molecule.D, (self.dim+1)**2, self.molecule.a, self.Name, self.odd, self.mrep, True, self.Pulses.alpha[i], self.Pulses.beta[i])  
+            Uhold = U2U1(FEE2.U, FEE1.U) 
             self.U = Uhold
             #U1 = FullEfieldEvolutionOperator(self.Pulses.P[0], self.B, self.Pulses.t[0], self.eps, self.D, self.dim, self.a, self.name, self.odd, self.mrep, True, self.alpha[0], self.beta[0])
             #U2 = FullEfieldEvolutionOperator(self.Pulses.P[1], self.B, self.Pulses.t[1], self.eps, self.D, self.dim, self.a, self.name, self.odd, self.mrep, True, self.alpha[1], self.beta[1])
         else:
             Uhold = Qobj(qeye(self.dim))
-            for i in range(len(self.Pulses.P)):
-                Uhold = U2U1(FullEfieldEvolutionOperator(self.Pulses.P[0], self.B, self.Pulses.t[0], self.eps, self.D, dim=self.dim, a=self.a, name=self.name, odd=self.odd, mrep=self.mrep), Uhold)
+            FEE1 = FullEfieldEvolutionOperator(self.Pulses.Ps[0], self.molecule.B, 0., self.EF.eps0, self.molecule.D, dim=self.dim, a=self.molecule.a, name=self.Name, odd=self.odd, mrep=self.mrep) 
+
+            FEE2 = FullEfieldEvolutionOperator(self.Pulses.Ps[1], self.molecule.B, self.Pulses.taus[time_ind], self.EF.eps0, self.molecule.D, dim=self.dim, a=self.molecule.a, name=self.Name, odd=self.odd, mrep=self.mrep) 
+            #for i in range(self.Pulses.nP):
+            #    FEE = FullEfieldEvolutionOperator(self.Pulses.Ps[i], self.molecule.B, self.Pulses.taus[i], self.EF.eps0, self.molecule.D, dim=self.dim, a=self.molecule.a, name=self.Name, odd=self.odd, mrep=self.mrep) 
+            Uhold = U2U1(FEE2.U, FEE1.U)
             self.U = Uhold
  
             #U1 = FullEfieldEvolutionOperator(self.Pulses.P[0], self.B, self.Pulses.t[0], self.eps, self.D, dim=self.dim, a=self.a, name=self.name, odd=self.odd, mrep=self.mrep)
@@ -888,7 +919,7 @@ class ImpactEfieldInterferometry(ImpactInterferometry):
         """
         from qutip import ket2dm, basis, qeye
         from Utility import Proj, index
-        lt = len(self.tau)
+        lt = len(self.Pulses.taus)
         inter = np.zeros(lt)
         if self.mrep:
             Op = qeye((self.dim+1)**2)
@@ -898,11 +929,12 @@ class ImpactEfieldInterferometry(ImpactInterferometry):
         else:
             Op = ket2dm(basis(self.dim, self.mstate))
         for i in range(lt):
-            self.set_pulses(self.Ps, [0., self.tau[i]], self.pol)
-            self.set_EvolutionOperator()
+            #self.set_pulses(self.Pulses.Ps, [0., self.Pulses.taus[i]], self.Pulses.pol, self.Pulses.alpha)
+            self.set_EvolutionOperator(i)
             fstate = self.U * self.istate
             dm = ket2dm(fstate)
             inter[i] = Proj(Op,dm)
+            print(i, inter[i])
             #fspop  = fstate.extract_states(self.mstate)
             #inter[i] = abs(fspop.overlap(fspop))**2. 
             
@@ -1052,7 +1084,7 @@ class PulsesInterferometry(Interferometry):
     Interferometry taking the full effect o the pulses into account
     """
 
-    def __init__(self, Molpara, Pulsepara=None, istate=None, mstate=0, dim=3, Name=None, odd=False, mrep=False) -> None:
+    def __init__(self, Molpara, Pulsepara=None, istate=None, mstate=0, dim=3, Name=None, odd=False, mrep=False, custom_para=False) -> None:
         """
         Initialization routine for a two orr-resonance fs-pulse interferometry run
 
@@ -1096,54 +1128,106 @@ class PulsesInterferometry(Interferometry):
         except KeyError as e:
             raise Exception(e)
         
+    def set_Hams(self):
+        """
+        """
+        from Utility import H0, H1_I0, H0_m
 
-        
-    def run_interferometry(self, options=None) -> None:
-        """
-        Runs an interferometry run and records final time delay dependent populatins
-        """
-        from qutip import mesolve, ket2dm, basis, Options
-        from Utility import H0, H1_I0, double_Gauss_me, Gauss_me, Proj, FreeEvolutionOperator as FE
         if self.mrep:
             print("WARNING: Only full representation implemented for m representation yet!")
             H0 = H0_m(self.molecule.B, self.dim, self.molecule.a, self.odd, full=True)
             HI = H1_I0(self.molecule.Da, self.dim, self.odd, full=True)
-            
         else:
             H0 = H0(self.molecule.B, self.dim, self.molecule.a)
             HI = H1_I0(self.molecule.Da, self.dim)
+
+        return H0, HI
+        
+    def run_interferometry(self, options=None, split=True) -> None:
+        """
+        Runs an interferometry run and records final time delay dependent populatins
+        """
+        from qutip import ket2dm, basis, Options
+        from Utility import H0, H1_I0, Proj, FreeEvolutionOperator as FE
+        
+        # Set the free and interaction terms of the Hamiltonian
+        H0, HI = self.set_Hams()
+        
+        # Define the measurment operator and the interferometry array
         ltau = len(self.Pulses.taus)
         Op = ket2dm(basis(self.dim, self.mstate))
         inter = np.zeros(ltau)
+
+        # Options to the numerical qutip solver
         if options is None:
             options = Options(store_final_state=True)
         else:
             if options.store_final_state == False:
                 print("Warning, must store final state in order to record final state population. Setting to True!")
                 options.store_final_state = True
-        exp_fact = 5.
-        for i in range(ltau):
-            print("Running interferometry, step {} of {}".format(i+1, ltau))
-            if self.Pulses.taus[i] > 2. * exp_fact * self.Pulses.sigma:
-                print("Splitting the time grid")
-                free_time = self.Pulses.taus[i] - 2. * exp_fact * self.Pulses.sigma
-                FreeU = FE(self.molecule.B, free_time, self.dim, self.molecule.a)
-                #time1 = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
-                time1 = np.arange(self.Pulses.tmin, exp_fact * self.Pulses.sigma, self.Pulses.dt)
-                time2 = np.arange(exp_fact * self.Pulses.sigma + free_time, self.Pulses.taus[i] - self.Pulses.tmin, self.Pulses.dt)
-                #output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
-                output1 = mesolve([H0, [HI, Gauss_me]], self.istate, time1, e_ops=[Op], options=options, args={'t0': 0.,'I0': self.Pulses.I0s[0], 'sigma': self.Pulses.sigma})
-                fstate1 = output1.final_state
-                freestate = FreeU.Uf * fstate1
-                output = mesolve([H0, [HI, Gauss_me]], freestate, time2, e_ops=[Op], options=options, args={'t0': self.Pulses.taus[i], 'I0': self.Pulses.I0s[1], 'sigma': self.Pulses.sigma})
-            else:
-                #time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
-                time = np.arange(self.Pulses.tmin, self.Pulses.taus[i] - self.Pulses.tmin, self.Pulses.dt)
-                output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
 
-            dm = ket2dm(output.final_state)
-            inter[i] = Proj(Op, dm)
+        # Run the interferometry scheme. We may chose to split the time grid for eficeiency
+        if split:
+            exp_fact = 5.
+            for i in range(ltau):
+                print("Running interferometry, step {} of {}".format(i+1, ltau))
+                if self.Pulses.taus[i] > 2. * exp_fact * self.Pulses.sigma:
+                    free_time = self.Pulses.taus[i] - 2. * exp_fact * self.Pulses.sigma
+                    FreeU = FE(self.molecule.B, free_time, self.dim, self.molecule.a)
+                    #time1 = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+                    time1 = np.arange(self.Pulses.tmin, exp_fact * self.Pulses.sigma, self.Pulses.dt)
+                    time2 = np.arange(exp_fact * self.Pulses.sigma + free_time, self.Pulses.taus[i] - self.Pulses.tmin, self.Pulses.dt)
+                    #output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
+                    #output1 = sesolve([H0, [HI, Gauss_me]], self.istate, time1, e_ops=[Op], options=options, args={'t0': 0.,'I0': self.Pulses.I0s[0], 'sigma': self.Pulses.sigma})
+                    #fstate1 = output1.final_state
+                    fstate1 = self.run_Gauss(H0, HI, self.istate, time1, 0., 0, Op, options)
+                    freestate = FreeU.Uf * fstate1
+                    #output = sesolve([H0, [HI, Gauss_me]], freestate, time2, e_ops=[Op], options=options, args={'t0': self.Pulses.taus[i], 'I0': self.Pulses.I0s[1], 'sigma': self.Pulses.sigma})
+                    fstate2 = self.run_Gauss(H0, HI, freestate, time2, self.Pulses.taus[i], 1, Op, options)
+                    #dm = ket2dm(output.final_state)
+                    dm = ket2dm(fstate2)
+                    inter[i] = Proj(Op, dm)
+                else:
+                    #time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+                    time = np.arange(self.Pulses.tmin, self.Pulses.taus[i] - self.Pulses.tmin, self.Pulses.dt)
+                    #output = sesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
+
+                    fstate = self.run_doubleGauss(H0, HI, time, i, Op, options)
+                    #dm = ket2dm(output.final_state)
+                    dm = ket2dm(fstate)
+                    inter[i] = Proj(Op, dm)
+        else:
+            time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+            for i in range(ltau):
+                print("Running interferometry, step {} of {}".format(i+1, ltau))
+                #ime = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+                #utput = sesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
+                fstate = self.run_doubleGauss(H0, HI, time, i, Op, options)
+                #dm = ket2dm(output.final_state)
+                dm = ket2dm(fstate)
+                inter[i] = Proj(Op, dm)
         self.inter = inter
+
+    def run_doubleGauss(self, H0, HI, time, time_index, Op, options):
+        """
+        """
+        from Utility import double_Gauss_me
+
+        output = sesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[time_index]})
+        
+        return output.final_state
+
+
+    def run_Gauss(self, H0, HI, istate, time, t0, pulse_index, Op, options):
+        """
+        """
+        from Utility import Gauss_me 
+        
+        output = sesolve([H0, [HI, Gauss_me]], istate, time, e_ops=[Op], options=options, args={'t0': t0,'I0': self.Pulses.I0s[pulse_index], 'sigma': self.Pulses.sigma})
+
+        return output.final_state
+
+
 
     def print_info(self):
         """
@@ -1154,12 +1238,12 @@ class PulsesInterferometry(Interferometry):
 
 
 
-class PulsesEfieldInterferometry(Interferometry):
+class PulsesEfieldInterferometry(PulsesInterferometry):
     """
     Interferometry taking the full effect o the pulses into account
     """
 
-    def __init__(self, Pulsepara=None, time=[], molpara=None, istate=None, mstate=0, dim=3, Name=None, mrep=False) -> None:
+    def __init__(self, Molecule, Pulsepara=None,  Fieldpara=None, istate=None, mstate=0, dim=3, Name=None, mrep=False, custom_para=False) -> None:
         """
         Initialization routine for a two orr-resonance fs-pulse interferometry run
 
@@ -1187,77 +1271,70 @@ class PulsesEfieldInterferometry(Interferometry):
             Name: str
                 Name of the instance
         """
-        import Utility as Ut
+        from Utility import StaticEfield as SE
         try:
-            if "a" in molpara:
-                super().__init__(istate, mstate, molpara['B'], dim, molpara['a'], Name, mrep)
-            else:
-                super().__init__(istate, mstate, molpara['B'], dim, 0., Name, mrep)
+            super().__init__(Molecule, Pulsepara, istate, mstate, dim, Name, mrep, custom_para)
+            self.SE = SE(Fieldpara)
         except KeyError as e:
             raise Exception(e)
-        
-        if Pulsepara is not None:
-            try:
-                self.I0    = [Pulsepara['I01'], Pulsepara['I02']]
-                self.sigma = Pulsepara['sigma']
-                self.t0    = Pulsepara['t0']
-                self.tau   = Pulsepara['tau']
-                self.eps   = Pulsepara['eps']
-                self.time  = time
-                if "alpha" in Pulsepara:
-                    self.alpha = Pulsepara['alpha']
-                else:
-                    self.alpha = None
-                if "beta" in Pulsepara:
-                    self.beta = Pulsepara['beta']
-                else:
-                    self.beta = None
-            except KeyError as e:
-                raise Exception(e)
+   
+
+    def set_Hams(self):
+        """
+        """
+        from Utility import H0, H0_m, H1_I0, H1_I0_m, H_dip, H_dipm
+
+        if self.mrep:
+            H0 = H0_m(self.molecule.B, self.dim, self.molecule.a, full=True) + H_dipm(self.SE.eps0, self.molecule.D, self.dim)
+            HI = H1_I0_m(self.molecule.Da, self.dim, full=True) 
         else:
-            self.I0    = None
-            self.sigma = None
-            self.t0    = None
-            self.tau   = None
-            self.eps   = None
-            self.time  = []
-            self.alpha = None
-            self.beta  = None
-        if molpara is not None:
-            try:
-                self.Da  = molpara['Da']
-                self.D = molpara['D']
-            except KeyError as e:
-                raise Exception(e)
-        else:
-            self.Da  = None
-            self.D = None
+            H0 = H0(self.molecule.B, self.dim, self.molecule.a, full=True) + H_dip(self.SE.eps0, self.molecule.D, self.dim)
+            HI = H1_I0(self.molecule.Da, self.dim, full=True)
+
+        return H0, HI
+     
 
     def run_interferometry(self, options=None) -> None:
         """
         Runs an interferometry run and records final time delay dependent populatins
         """
-        from qutip import mesolve, ket2dm, basis, Options
-        from Utility import H0, H1_I0, H_dip, double_Gauss_me, Proj
-        if self.mrep:
-            H0 = H0_m(self.B, self.dim, self.a, full=True) + H_dipm(self.eps, self.D, self.dim)
-            HI = H1_I0_m(self.Da, self.dim, full=True) 
-        else:
-            H0 = H0(self.B, self.dim, self.a, full=True) + H_dip(self.eps, self.D, self.dim)
-            HI = H1_I0(self.Da, self.dim, full=True)
-        ltau = len(self.tau)
+        #from qutip import mesolve, ket2dm, basis, Options
+        from qutip import ket2dm, basis, Options
+        #from Utility import H0, H1_I0, H_dip, double_Gauss_me, Proj
+        from Utility import H0, H1_I0, H_dip, Proj
+        
+        #if self.mrep:
+        #    H0 = H0_m(self.molecule.B, self.dim, self.molecule.a, full=True) + H_dipm(self.SE.eps0, self.molecule.D, self.dim)
+        #    HI = H1_I0_m(self.molecule.Da, self.dim, full=True) 
+        #else:
+        #    H0 = H0(self.molecule.B, self.dim, self.molecule.a, full=True) + H_dip(self.SE.eps0, self.molecule.D, self.dim)
+        #    HI = H1_I0(self.molecule.Da, self.dim, full=True)
+
+        # Set the free and interaction terms of the Hamiltonian
+        H0, HI = self.set_Hams()
+        
+        # Define the measurment operator and the interferometry array
+        ltau = len(self.Pulses.taus)
         Op = ket2dm(basis(self.dim, self.mstate))
         inter = np.zeros(ltau)
+
+        # Options to the numerical qutip solver
         if options is None:
             options = Options(store_final_state=True)
         else:
             if options.store_final_state == False:
                 print("Warning, must store final state in order to record final state population. Setting to True!")
                 options.store_final_state = True
-        for i in range(ltau):
-            output = mesolve([H0, [HI, double_Gauss_me]], self.istate, self.time, e_ops=[Op], options=options, args={'t0': self.t0,'I01': self.I0[0], 'I02': self.I0[1],'sigma': self.sigma, 'tau': self.tau[i]})
 
-            dm = ket2dm(output.final_state)
+        # Run the interferometry scheme. We may chose to split the time grid for eficeiency
+        time = np.arange(self.Pulses.tmin, self.Pulses.tmax, self.Pulses.dt)
+        for i in range(ltau):
+            print("Running interferometry, step {} of {}".format(i+1, ltau))
+            fstate = self.run_doubleGauss(H0, HI, time, i, Op, options)
+            #output = mesolve([H0, [HI, double_Gauss_me]], self.istate, time, e_ops=[Op], options=options, args={'t0': 0.,'I01': self.Pulses.I0s[0], 'I02': self.Pulses.I0s[1],'sigma': self.Pulses.sigma, 'tau': self.Pulses.taus[i]})
+
+            #dm = ket2dm(output.final_state)
+            dm = ket2dm(fstate)
             inter[i] = Proj(Op, dm)
         self.inter = inter
 
