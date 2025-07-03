@@ -106,6 +106,8 @@ class Molecule():
                         setattr(self, key, 0.)
                     else:
                         setattr(self, key, val)
+                if "a" not in Molpara.items():
+                    self.a = 0.
 
 
             else:

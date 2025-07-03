@@ -186,9 +186,10 @@ class ImpactPulses(Pulses):
             if not self.is_positive(para['taus'][i]):
                 raise ValueError("Expect that all pulse delays be psoitive. Pulse delay {} has value {}".format(i+1, para['taus'][i]))
 
+
         if self.is_monotonically_positive(para['taus']) is False:
             raise ValueError("The time delays are not monotonically increasing as they should be")
-
+    
     def print_info(self):
         """ """
 
